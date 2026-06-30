@@ -5,7 +5,7 @@
  * initial password can be set instead.
  */
 import type { FastifyInstance } from 'fastify';
-import { createUserSchema, updateUserRoleSchema, ROLES } from '@ai-phone/shared';
+import { createUserSchema, isPlatformRole, updateUserRoleSchema, ROLES } from '@ai-phone/shared';
 import { z } from 'zod';
 import { config } from '../config.js';
 import { prisma } from '../db.js';
@@ -37,9 +37,9 @@ export async function userRoutes(app: FastifyInstance) {
     const body = createUserSchema.parse(req.body);
     const tenantId = req.auth!.tenantId;
 
-    // Only a super admin may grant the super_admin role.
-    if (body.role === ROLES.SUPER_ADMIN && req.auth!.role !== ROLES.SUPER_ADMIN) {
-      throw forbidden('Only a super admin can assign the super_admin role');
+    // Only a super admin may grant platform-staff roles (super_admin etc.).
+    if (isPlatformRole(body.role) && req.auth!.role !== ROLES.SUPER_ADMIN) {
+      throw forbidden('Only a super admin can assign platform roles');
     }
 
     const result = await upsertTenantUser(tenantId, body);
@@ -68,8 +68,8 @@ export async function userRoutes(app: FastifyInstance) {
     const { role } = updateUserRoleSchema.parse(req.body);
     const tenantId = req.auth!.tenantId;
 
-    if (role === ROLES.SUPER_ADMIN && req.auth!.role !== ROLES.SUPER_ADMIN) {
-      throw forbidden('Only a super admin can assign the super_admin role');
+    if (isPlatformRole(role) && req.auth!.role !== ROLES.SUPER_ADMIN) {
+      throw forbidden('Only a super admin can assign platform roles');
     }
     if (userId === req.auth!.userId) throw badRequest('You cannot change your own role');
 

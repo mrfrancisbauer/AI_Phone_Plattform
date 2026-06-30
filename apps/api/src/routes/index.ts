@@ -3,6 +3,7 @@ import { healthRoutes } from './health.js';
 import { authRoutes } from './auth.js';
 import { webhookRoutes } from './webhooks.js';
 import { tenantRoutes } from './tenants.js';
+import { adminRoutes } from './admin.js';
 import { userRoutes } from './users.js';
 import { assistantRoutes } from './assistants.js';
 import { questionnaireRoutes } from './questionnaires.js';
@@ -22,6 +23,7 @@ export async function registerRoutes(app: FastifyInstance) {
     async (api) => {
       await api.register(authRoutes);
       await api.register(tenantRoutes);
+      await api.register(adminRoutes);
       await api.register(userRoutes);
       await api.register(assistantRoutes);
       await api.register(questionnaireRoutes);

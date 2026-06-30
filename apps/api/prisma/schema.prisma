@@ -21,9 +21,18 @@ datasource db {
 
 enum Role {
   super_admin
+  // Platform-level staff roles (operate across tenants, scoped capabilities).
+  platform_support
+  billing
   tenant_admin
   tenant_member
   read_only
+}
+
+enum Plan {
+  starter
+  business
+  enterprise
 }
 
 enum TelephonyProvider {
@@ -81,6 +90,14 @@ model Tenant {
   monthlyBudgetLimit Decimal? @db.Decimal(12, 4)
   autoPauseOnBudget  Boolean  @default(false)
   paused             Boolean  @default(false)
+  // Admin-console metadata
+  industry           String?
+  country            String   @default("DE")
+  timezone           String   @default("Europe/Berlin")
+  plan               Plan     @default(starter)
+  // Wizard choices: how telephony / OpenAI are sourced for this tenant.
+  telephonyMode      String   @default("platform_twilio")
+  openaiMode         String   @default("platform")
   // White-label / branding
   brandName          String?
   brandColor         String?
@@ -107,6 +124,9 @@ model User {
   email        String       @unique
   passwordHash String?
   name         String?
+  // Admin-console account controls.
+  locked       Boolean      @default(false)
+  lastLoginAt  DateTime?
   createdAt    DateTime     @default(now())
   tenantUsers  TenantUser[]
 
@@ -400,4 +420,61 @@ model DataRetentionSetting {
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@map("data_retention_settings")
+}
+
+// --- Platform-level (non-tenant) tables for the Super-Admin console ---------
+
+// Key/value store for non-secret platform configuration (AI defaults, provider
+// preferences, feature flags). Secrets stay in the environment / secret manager.
+model PlatformSetting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+  updatedBy String?
+
+  @@map("platform_settings")
+}
+
+// Versioned global system prompt with rollback support.
+model PromptVersion {
+  id        String   @id @default(uuid())
+  version   Int      @unique @default(autoincrement())
+  label     String?
+  content   String
+  active    Boolean  @default(false)
+  createdBy String?
+  createdAt DateTime @default(now())
+
+  @@map("prompt_versions")
+}
+
+// Backup run metadata (the actual dump lives in object storage / a volume).
+model Backup {
+  id          String    @id @default(uuid())
+  status      String    @default("pending") // pending | running | completed | failed
+  sizeBytes   BigInt?
+  location    String?
+  note        String?
+  startedAt   DateTime  @default(now())
+  completedAt DateTime?
+  createdBy   String?
+
+  @@map("backups")
+}
+
+// Lightweight application event log surfaced in the admin "Logs" view. Audit of
+// admin actions continues to use the existing audit_logs table.
+model AppLog {
+  id        String   @id @default(uuid())
+  level     String   @default("info") // info | warn | error
+  channel   String // api | login | openai | telephony | webhook | system
+  message   String
+  tenantId  String?
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  @@index([channel])
+  @@index([level])
+  @@index([createdAt])
+  @@map("app_logs")
 }

@@ -180,6 +180,65 @@ async function main() {
     create: { tenantId: tenant.id, userId: superAdmin.id, role: 'super_admin' },
   });
 
+  // Industry/plan metadata for the demo tenant (admin console).
+  await prisma.tenant.update({
+    where: { id: tenant.id },
+    data: { industry: 'Kanzlei', plan: 'business', country: 'DE' },
+  });
+
+  // --- Admin-console dummy data (development only) --------------------------
+
+  // A couple more tenants so the platform dashboard/list looks populated.
+  const extraTenants: { name: string; slug: string; industry: string; plan: 'starter' | 'business' | 'enterprise' }[] = [
+    { name: 'Praxis Dr. Müller', slug: 'praxis-mueller', industry: 'Arztpraxis', plan: 'starter' },
+    { name: 'Bauer Immobilien GmbH', slug: 'bauer-immobilien', industry: 'Immobilien', plan: 'enterprise' },
+  ];
+  for (const t of extraTenants) {
+    await prisma.tenant.upsert({
+      where: { slug: t.slug },
+      update: {},
+      create: {
+        name: t.name,
+        slug: t.slug,
+        industry: t.industry,
+        plan: t.plan,
+        country: 'DE',
+        retentionSetting: { create: { retentionDays: 90 } },
+      },
+    });
+  }
+
+  // Global AI defaults + an active prompt version.
+  await prisma.platformSetting.upsert({
+    where: { key: 'ai' },
+    update: {},
+    create: {
+      key: 'ai',
+      value: { defaultModel: 'gpt-4o-mini', fallbackModel: 'gpt-4o', temperature: 0.3, maxTokens: 1024, voice: 'alloy' },
+    },
+  });
+  const hasPrompt = await prisma.promptVersion.findFirst();
+  if (!hasPrompt) {
+    await prisma.promptVersion.create({
+      data: { label: 'Initial', content: EXAMPLE_SYSTEM_PROMPT, active: true, createdBy: 'seed' },
+    });
+  }
+
+  // Sample app logs across channels for the Logs view.
+  const logCount = await prisma.appLog.count();
+  if (logCount === 0) {
+    await prisma.appLog.createMany({
+      data: [
+        { level: 'info', channel: 'system', message: 'Platform gestartet.' },
+        { level: 'info', channel: 'login', message: 'Super Admin angemeldet.' },
+        { level: 'info', channel: 'telephony', message: 'Eingehender Anruf verarbeitet.' },
+        { level: 'warn', channel: 'openai', message: 'OpenAI nicht konfiguriert – lokaler Fallback aktiv.' },
+        { level: 'info', channel: 'webhook', message: 'Twilio-Webhook empfangen.' },
+        { level: 'error', channel: 'api', message: 'Beispiel-Fehler (Demo-Daten).' },
+      ],
+    });
+  }
+
   // eslint-disable-next-line no-console
   console.log('✅ Seed complete.');
   // eslint-disable-next-line no-console
@@ -188,6 +247,8 @@ async function main() {
   console.log(`   Admin login:   admin@demo-kanzlei.de / demo-password-123`);
   // eslint-disable-next-line no-console
   console.log(`   Demo number:   ${demoNumber}`);
+  // eslint-disable-next-line no-console
+  console.log(`   Super admin:   super@platform.local / super-password-123  (Admin-Konsole)`);
 }
 
 main()

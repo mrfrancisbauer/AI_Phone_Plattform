@@ -5,7 +5,9 @@
  */
 import { z } from 'zod';
 import {
+  INDUSTRIES,
   LEAD_CATEGORIES,
+  PLANS,
   QUESTION_TYPES,
   RETENTION_DAYS,
   ROLES,
@@ -14,10 +16,15 @@ import {
 
 export const roleSchema = z.enum([
   ROLES.SUPER_ADMIN,
+  ROLES.PLATFORM_SUPPORT,
+  ROLES.BILLING,
   ROLES.TENANT_ADMIN,
   ROLES.TENANT_MEMBER,
   ROLES.READ_ONLY,
 ]);
+
+export const planSchema = z.enum(PLANS);
+export const industrySchema = z.enum(INDUSTRIES);
 
 export const questionTypeSchema = z.enum([
   QUESTION_TYPES.FREE_TEXT,
@@ -46,6 +53,13 @@ export const createTenantSchema = z.object({
   locale: z.enum(['de', 'en']).default('de'),
   monthlyBudgetLimit: z.number().nonnegative().nullable().optional(),
   autoPauseOnBudget: z.boolean().default(false),
+  // Admin-console / wizard fields (all optional, sensible defaults server-side).
+  industry: z.string().max(80).optional(),
+  country: z.string().max(2).optional(),
+  timezone: z.string().max(60).optional(),
+  plan: planSchema.optional(),
+  telephonyMode: z.enum(['platform_twilio', 'own_twilio', 'sip', 'telnyx']).optional(),
+  openaiMode: z.enum(['platform', 'own']).optional(),
 });
 
 export const updateTenantSchema = createTenantSchema.partial().omit({ slug: true });
@@ -181,9 +195,37 @@ export const provisionTenantSchema = z.object({
   seedStarterContent: z.boolean().default(true),
 });
 
+// --- Admin console ---
+export const platformAiSettingsSchema = z.object({
+  defaultModel: z.string().min(1).max(80),
+  fallbackModel: z.string().min(1).max(80),
+  temperature: z.number().min(0).max(2),
+  maxTokens: z.number().int().min(1).max(32000),
+  voice: z.string().min(1).max(60),
+});
+
+export const promptVersionSchema = z.object({
+  label: z.string().max(120).optional(),
+  content: z.string().min(1).max(20000),
+  activate: z.boolean().default(false),
+});
+
+export const providerTestSchema = z.object({
+  provider: z.enum(['twilio', 'openai', 'email', 'stripe']),
+});
+
+export const adminListQuerySchema = z.object({
+  q: z.string().max(120).optional(),
+  status: z.enum(['active', 'paused']).optional(),
+  plan: planSchema.optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(20),
+});
+
 export type CreateTenantInput = z.infer<typeof createTenantSchema>;
 export type CreateUserInput = z.infer<typeof createUserSchema>;
 export type ProvisionTenantInput = z.infer<typeof provisionTenantSchema>;
+export type PlatformAiSettingsInput = z.infer<typeof platformAiSettingsSchema>;
 export type UpsertAssistantInput = z.infer<typeof upsertAssistantSchema>;
 export type UpsertQuestionnaireInput = z.infer<typeof upsertQuestionnaireSchema>;
 export type CreatePhoneNumberInput = z.infer<typeof createPhoneNumberSchema>;
