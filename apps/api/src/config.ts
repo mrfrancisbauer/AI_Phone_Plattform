@@ -3,6 +3,10 @@
  * start if a required secret is missing or malformed, so misconfiguration
  * surfaces immediately instead of at the first request.
  */
+// Load apps/api/.env (and .env in cwd) before reading process.env. In
+// production, env vars are injected by the platform/secret manager and this is
+// a harmless no-op when no .env file exists.
+import 'dotenv/config';
 import { z } from 'zod';
 
 const envSchema = z.object({

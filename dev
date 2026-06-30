@@ -1,0 +1,337 @@
+#!/usr/bin/env bash
+#
+# Developer Toolbox for the AI Phone Platform.
+#
+#   ./dev setup     First-time setup: env + secrets, deps, database, seed
+#   ./dev start     Start Postgres + API + dashboard (hot reload)
+#   ./dev stop      Stop API + dashboard (and the Postgres container)
+#   ./dev restart   stop + start
+#   ./dev reset     Drop + recreate the database, then re-seed
+#   ./dev update    git pull + deps + prisma generate + migrate + build
+#   ./dev seed      (Re)seed the demo tenant
+#   ./dev admin     Create a platform owner (super admin)
+#   ./dev migrate   Apply pending database migrations
+#   ./dev build     Build the shared package + API
+#   ./dev logs      Tail the API + dashboard logs
+#   ./dev doctor    Diagnose the local environment
+#   ./dev help      Show this help
+#
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")" && pwd)"
+cd "$ROOT"
+
+API_ENV="apps/api/.env"
+WEB_ENV="apps/web/.env.local"
+DEV_DIR=".dev"
+API_PORT="${API_PORT:-4000}"
+WEB_PORT="${WEB_PORT:-3000}"
+
+# --- pretty output ---------------------------------------------------------
+if [ -t 1 ]; then
+  C_GREEN='\033[0;32m'; C_RED='\033[0;31m'; C_YELLOW='\033[0;33m'; C_BLUE='\033[0;34m'; C_DIM='\033[2m'; C_RESET='\033[0m'
+else
+  C_GREEN=''; C_RED=''; C_YELLOW=''; C_BLUE=''; C_DIM=''; C_RESET=''
+fi
+ok()    { printf "${C_GREEN}✔${C_RESET} %s\n" "$*"; }
+warn()  { printf "${C_YELLOW}⚠${C_RESET} %s\n" "$*"; }
+fail()  { printf "${C_RED}✘${C_RESET} %s\n" "$*"; }
+info()  { printf "${C_BLUE}▸${C_RESET} %s\n" "$*"; }
+step()  { printf "\n${C_BLUE}== %s ==${C_RESET}\n" "$*"; }
+
+# --- helpers ---------------------------------------------------------------
+have() { command -v "$1" >/dev/null 2>&1; }
+
+# docker compose v2 (`docker compose`) or legacy (`docker-compose`)
+dc() {
+  if have docker && docker compose version >/dev/null 2>&1; then docker compose "$@";
+  elif have docker-compose; then docker-compose "$@";
+  else return 127; fi
+}
+docker_up() { have docker && docker info >/dev/null 2>&1; }
+
+gen_hex32()   { if have openssl; then openssl rand -hex 32; else node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"; fi; }
+gen_secret()  { if have openssl; then openssl rand -base64 48 | tr -d '\n'; else node -e "console.log(require('crypto').randomBytes(48).toString('base64'))"; fi; }
+
+# set_env KEY VALUE FILE  — update the key in place or append it.
+set_env() {
+  local key="$1" val="$2" file="$3" tmp found=0
+  tmp="$(mktemp)"
+  if [ -f "$file" ]; then
+    while IFS= read -r line || [ -n "$line" ]; do
+      case "$line" in
+        "$key="*) printf '%s=%s\n' "$key" "$val"; found=1 ;;
+        *) printf '%s\n' "$line" ;;
+      esac
+    done < "$file" > "$tmp"
+  fi
+  [ "$found" -eq 0 ] && printf '%s=%s\n' "$key" "$val" >> "$tmp"
+  mv "$tmp" "$file"
+}
+
+load_env() {
+  [ -f "$API_ENV" ] || return 0
+  set -a
+  # shellcheck disable=SC1090
+  . "$API_ENV"
+  set +a
+}
+
+port_open() { (exec 3<>"/dev/tcp/$1/$2") >/dev/null 2>&1 && { exec 3>&- 3<&- 2>/dev/null; return 0; } || return 1; }
+
+# recursively kill a process and its children
+kill_tree() {
+  local pid="$1" child
+  for child in $(pgrep -P "$pid" 2>/dev/null || true); do kill_tree "$child"; done
+  kill "$pid" >/dev/null 2>&1 || true
+}
+
+proc_running() {
+  local name="$1" pidfile="$DEV_DIR/$name.pid"
+  [ -f "$pidfile" ] && kill -0 "$(cat "$pidfile")" 2>/dev/null
+}
+
+start_proc() {
+  local name="$1" cmd="$2"
+  mkdir -p "$DEV_DIR"
+  if proc_running "$name"; then info "$name already running (pid $(cat "$DEV_DIR/$name.pid"))"; return; fi
+  nohup bash -c "exec $cmd" >"$DEV_DIR/$name.log" 2>&1 &
+  echo $! > "$DEV_DIR/$name.pid"
+  ok "$name started (pid $!) → $DEV_DIR/$name.log"
+}
+
+stop_proc() {
+  local name="$1" pidfile="$DEV_DIR/$name.pid"
+  if [ -f "$pidfile" ]; then
+    kill_tree "$(cat "$pidfile")"
+    rm -f "$pidfile"
+    ok "$name stopped"
+  fi
+}
+
+db_host_port() {
+  load_env
+  local url="${DATABASE_URL:-}" hostport
+  hostport="${url#*@}"; hostport="${hostport%%/*}"
+  DB_HOST="${hostport%%:*}"; DB_PORT="${hostport##*:}"
+  [ "$DB_HOST" = "$DB_PORT" ] && DB_PORT=5432
+  [ -z "$DB_HOST" ] && DB_HOST=localhost
+}
+
+wait_for_db() {
+  db_host_port
+  info "Waiting for PostgreSQL at $DB_HOST:$DB_PORT ..."
+  for _ in $(seq 1 30); do
+    if port_open "$DB_HOST" "$DB_PORT"; then ok "PostgreSQL reachable"; return 0; fi
+    sleep 1
+  done
+  fail "PostgreSQL did not become reachable at $DB_HOST:$DB_PORT"; return 1
+}
+
+ensure_db_running() {
+  db_host_port
+  if port_open "$DB_HOST" "$DB_PORT"; then return 0; fi
+  if [ "$DB_HOST" = "localhost" ] || [ "$DB_HOST" = "127.0.0.1" ]; then
+    if docker_up; then info "Starting Postgres container ..."; dc up -d db; wait_for_db; return $?; fi
+    warn "No local Postgres and Docker is not available. Set DATABASE_URL to an external database."
+    return 1
+  fi
+  warn "External database $DB_HOST:$DB_PORT is not reachable yet."
+}
+
+# --- commands --------------------------------------------------------------
+cmd_setup() {
+  step "Setup"
+  require_node
+
+  if [ ! -f "$API_ENV" ]; then
+    cp .env.example "$API_ENV"
+    set_env ENCRYPTION_KEY "$(gen_hex32)" "$API_ENV"
+    set_env JWT_SECRET "$(gen_secret)" "$API_ENV"
+    ok "Created $API_ENV with freshly generated ENCRYPTION_KEY and JWT_SECRET"
+  else
+    ok "$API_ENV already exists (left untouched)"
+  fi
+
+  if [ ! -f "$WEB_ENV" ]; then
+    printf 'NEXT_PUBLIC_API_URL=http://localhost:%s\n' "$API_PORT" > "$WEB_ENV"
+    ok "Created $WEB_ENV"
+  fi
+
+  step "Install dependencies"
+  npm install
+  ok "Dependencies installed"
+
+  step "Database"
+  ensure_db_running || true
+  step "Prisma client + migrations"
+  npm run db:generate --workspace @ai-phone/api
+  npm run db:migrate --workspace @ai-phone/api
+  ok "Database schema applied"
+
+  step "Build shared package"
+  npm run build --workspace @ai-phone/shared
+
+  step "Seed demo data"
+  npm run db:seed --workspace @ai-phone/api || warn "Seeding skipped/failed (is the database running?)"
+
+  printf "\n"
+  ok "Setup complete. Next: ${C_DIM}./dev start${C_RESET}  then open http://localhost:$WEB_PORT"
+  info "Demo login: admin@demo-kanzlei.de / demo-password-123"
+}
+
+cmd_start() {
+  step "Start"
+  [ -f "$API_ENV" ] || { fail "No $API_ENV — run ./dev setup first."; exit 1; }
+  ensure_db_running || true
+  [ -f packages/shared/dist/index.js ] || npm run build --workspace @ai-phone/shared
+  start_proc api "npm run dev --workspace @ai-phone/api"
+  start_proc web "npm run dev --workspace @ai-phone/web"
+
+  info "Waiting for the API to come up ..."
+  for _ in $(seq 1 30); do
+    if port_open localhost "$API_PORT"; then break; fi
+    sleep 1
+  done
+  printf "\n"
+  ok "API:       http://localhost:$API_PORT/health"
+  ok "Dashboard: http://localhost:$WEB_PORT"
+  info "Logs: ./dev logs   ·   Stop: ./dev stop"
+}
+
+cmd_stop() {
+  step "Stop"
+  stop_proc web
+  stop_proc api
+  if docker_up && dc ps db >/dev/null 2>&1; then dc stop db >/dev/null 2>&1 && ok "Postgres container stopped" || true; fi
+}
+
+cmd_restart() { cmd_stop; cmd_start; }
+
+cmd_reset() {
+  step "Reset database"
+  ensure_db_running || true
+  ( cd apps/api && npx prisma migrate reset --force )
+  ok "Database reset and re-seeded"
+}
+
+cmd_update() {
+  step "Update"
+  if [ -d .git ]; then
+    info "Pulling latest changes ..."
+    git pull --ff-only || warn "git pull failed (uncommitted changes or diverged branch?)"
+  fi
+  npm install
+  npm run db:generate --workspace @ai-phone/api
+  npm run db:migrate --workspace @ai-phone/api
+  npm run build --workspace @ai-phone/shared
+  ok "Update complete"
+}
+
+cmd_seed() { ensure_db_running || true; npm run db:seed --workspace @ai-phone/api; }
+
+cmd_admin() {
+  step "Create platform owner (super admin)"
+  ensure_db_running || true
+  local email pass name
+  printf "E-Mail: "; read -r email
+  printf "Passwort (min. 8 Zeichen): "; read -rs pass; printf "\n"
+  printf "Name (optional): "; read -r name
+  npm run create:super-admin --workspace @ai-phone/api -- --email "$email" --password "$pass" ${name:+--name "$name"}
+}
+
+cmd_migrate() { ensure_db_running || true; npm run db:migrate --workspace @ai-phone/api; }
+
+cmd_build() {
+  npm run build --workspace @ai-phone/shared
+  npm run build --workspace @ai-phone/api
+  ok "Build complete"
+}
+
+cmd_logs() {
+  mkdir -p "$DEV_DIR"
+  touch "$DEV_DIR/api.log" "$DEV_DIR/web.log"
+  info "Tailing $DEV_DIR/api.log and $DEV_DIR/web.log (Ctrl-C to stop)"
+  tail -n 40 -f "$DEV_DIR/api.log" "$DEV_DIR/web.log"
+}
+
+require_node() {
+  if ! have node; then fail "Node.js is not installed (need >= 20)."; exit 1; fi
+  local major; major="$(node -p 'process.versions.node.split(".")[0]')"
+  if [ "$major" -lt 20 ]; then fail "Node $(node -v) is too old — need >= 20."; exit 1; fi
+}
+
+cmd_doctor() {
+  step "Doctor"
+  load_env
+  local issues=0
+
+  # Toolchain
+  if have node; then
+    local major; major="$(node -p 'process.versions.node.split(".")[0]')"
+    if [ "$major" -ge 20 ]; then ok "Node $(node -v)"; else fail "Node $(node -v) (need >= 20)"; issues=$((issues+1)); fi
+  else fail "Node.js not found"; issues=$((issues+1)); fi
+  have npm && ok "npm $(npm -v)" || { fail "npm not found"; issues=$((issues+1)); }
+
+  # Docker (optional but recommended for local Postgres)
+  if docker_up; then ok "Docker is running"; else warn "Docker not running (only needed for the local Postgres container)"; fi
+
+  # Database
+  db_host_port
+  if [ -n "${DATABASE_URL:-}" ] && port_open "$DB_HOST" "$DB_PORT"; then
+    ok "PostgreSQL reachable ($DB_HOST:$DB_PORT)"
+  else
+    fail "PostgreSQL not reachable ($DB_HOST:$DB_PORT) — run ./dev start"; issues=$((issues+1))
+  fi
+
+  # Config
+  [ -f "$API_ENV" ] && ok "$API_ENV present" || { fail "$API_ENV missing — run ./dev setup"; issues=$((issues+1)); }
+  if [ -n "${ENCRYPTION_KEY:-}" ] && printf '%s' "${ENCRYPTION_KEY:-}" | grep -Eq '^[0-9a-fA-F]{64}$'; then ok "ENCRYPTION_KEY looks valid"; else fail "ENCRYPTION_KEY missing or not 64 hex chars"; issues=$((issues+1)); fi
+  if [ -n "${JWT_SECRET:-}" ] && [ "${#JWT_SECRET}" -ge 32 ]; then ok "JWT_SECRET set"; else fail "JWT_SECRET missing or too short"; issues=$((issues+1)); fi
+
+  # Build artifacts
+  if [ -f node_modules/.prisma/client/index.d.ts ] && grep -q "Delegate" node_modules/.prisma/client/index.d.ts 2>/dev/null; then
+    ok "Prisma client generated"
+  else fail "Prisma client not generated — run ./dev migrate (or npm run db:generate)"; issues=$((issues+1)); fi
+  [ -n "$(ls apps/api/prisma/migrations 2>/dev/null)" ] && ok "Migrations present" || { warn "No migrations found"; }
+  [ -f packages/shared/dist/index.js ] && ok "Shared package built" || { fail "Shared package not built — run ./dev build"; issues=$((issues+1)); }
+
+  # Running services
+  port_open localhost "$API_PORT" && ok "API reachable (localhost:$API_PORT)" || warn "API not running (localhost:$API_PORT) — ./dev start"
+  port_open localhost "$WEB_PORT" && ok "Dashboard reachable (localhost:$WEB_PORT)" || warn "Dashboard not running (localhost:$WEB_PORT) — ./dev start"
+
+  # Integrations (optional)
+  [ -n "${TWILIO_ACCOUNT_SID:-}" ] && [ -n "${TWILIO_AUTH_TOKEN:-}" ] && ok "Twilio configured" || warn "Twilio not configured (inbound calls disabled until set)"
+  [ -n "${OPENAI_API_KEY:-}" ] && ok "OpenAI key present" || warn "OPENAI_API_KEY not set (using local summarizer fallback)"
+  case "${EMAIL_PROVIDER:-console}" in
+    resend) [ -n "${RESEND_API_KEY:-}" ] && ok "Email: Resend configured" || warn "EMAIL_PROVIDER=resend but RESEND_API_KEY is empty" ;;
+    *) ok "Email: console provider (emails are logged, not sent)" ;;
+  esac
+
+  printf "\n"
+  if [ "$issues" -eq 0 ]; then ok "Alles einsatzbereit."; else fail "$issues Problem(e) gefunden — siehe oben."; return 1; fi
+}
+
+usage() { sed -n '3,17p' "$0" | sed 's/^# \{0,1\}//'; }
+
+main() {
+  local cmd="${1:-help}"; shift || true
+  case "$cmd" in
+    setup)   cmd_setup "$@" ;;
+    start)   cmd_start "$@" ;;
+    stop)    cmd_stop "$@" ;;
+    restart) cmd_restart "$@" ;;
+    reset)   cmd_reset "$@" ;;
+    update)  cmd_update "$@" ;;
+    seed)    cmd_seed "$@" ;;
+    admin)   cmd_admin "$@" ;;
+    migrate) cmd_migrate "$@" ;;
+    build)   cmd_build "$@" ;;
+    logs)    cmd_logs "$@" ;;
+    doctor)  cmd_doctor "$@" ;;
+    help|-h|--help) usage ;;
+    *) fail "Unknown command: $cmd"; usage; exit 1 ;;
+  esac
+}
+
+main "$@"

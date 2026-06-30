@@ -1,0 +1,66 @@
+# Full production-like stack: Postgres + API + dashboard.
+#
+#   cp .env.prod.example .env.prod   # then fill in real secrets
+#   docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
+#
+# For real production prefer a managed Postgres (Supabase/Neon/RDS, EU region)
+# and point DATABASE_URL at it instead of the bundled db service. Put this
+# behind a TLS-terminating reverse proxy (Caddy/Traefik/Nginx).
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env.prod}
+      POSTGRES_DB: ${POSTGRES_DB:-ai_phone}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-postgres}']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      API_PORT: '4000'
+      API_PUBLIC_URL: ${API_PUBLIC_URL}
+      WEB_ORIGIN: ${WEB_ORIGIN}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-ai_phone}?schema=public
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?set ENCRYPTION_KEY}
+      TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
+      TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
+      TWILIO_VALIDATE_SIGNATURE: ${TWILIO_VALIDATE_SIGNATURE:-true}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      EMAIL_PROVIDER: ${EMAIL_PROVIDER:-console}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      EMAIL_FROM: ${EMAIL_FROM:-AI Phone Assistant <assistant@example.com>}
+      PLATFORM_MARKUP_PERCENT: ${PLATFORM_MARKUP_PERCENT:-0.30}
+    ports:
+      - '4000:4000'
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        # Baked into the client bundle at build time.
+        NEXT_PUBLIC_API_URL: ${API_PUBLIC_URL}
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - '3000:3000'
+
+volumes:
+  pgdata:
