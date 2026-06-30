@@ -1,0 +1,24 @@
+# Local development services. Start with: ./dev start  (or: docker compose up -d db)
+# Only Postgres runs in Docker locally; the API and dashboard run via the dev
+# servers (hot reload). For a full containerized stack see docker-compose.prod.yml.
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: ai_phone_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: ai_phone
+    ports:
+      - '5432:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pgdata:

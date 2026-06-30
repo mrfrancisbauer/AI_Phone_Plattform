@@ -14,7 +14,13 @@ out/
 .env
 .env.local
 .env.*.local
+.env.prod
+!.env.example
+!.env.prod.example
 *.pem
+
+# Dev toolbox runtime (pids + logs)
+.dev/
 
 # Logs
 logs/

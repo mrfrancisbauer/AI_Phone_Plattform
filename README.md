@@ -99,23 +99,39 @@ See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the detailed design.
 
 ## Quick start
 
-Prerequisites: **Node 20+** and a **PostgreSQL** database (local Docker, Supabase, Neon …).
+Prerequisites: **Node 20+**, and either **Docker** (for the bundled Postgres) or
+an external **PostgreSQL**.
+
+### Recommended: the `./dev` toolbox
+
+A single script handles setup, secrets, the database, and running everything.
+Clone the repo (don't download a zip — a clone lets `./dev update` pull changes
+and keeps your `.env`), then:
 
 ```bash
-# 1. Install
+./dev setup     # generates secrets + .env, starts Postgres, migrates, seeds
+./dev start     # runs API (:4000) + dashboard (:3000) with hot reload
+./dev doctor    # diagnoses your environment (Node, DB, env, ports, integrations)
+```
+
+Other commands: `stop`, `restart`, `reset` (recreate DB), `update` (git pull +
+deps + migrate), `seed`, `admin` (create a super admin), `logs`, `build`.
+`./dev help` lists them all.
+
+> **Why this fixes "reconfigure every time":** `./dev setup` auto-generates
+> `ENCRYPTION_KEY`/`JWT_SECRET` into `apps/api/.env`, and the backend now loads
+> that `.env` automatically. Use `git pull` / `./dev update` instead of fresh
+> zip downloads so the config and database persist.
+
+### Manual setup (without the toolbox)
+
+```bash
 npm install
-
-# 2. Configure the API
-cp .env.example apps/api/.env       # then edit values (see below)
-#   Generate a real encryption key:
+cp .env.example apps/api/.env       # then edit; generate a real key:
 #   node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
-
-# 3. Create the schema and seed a demo tenant
 npm run db:generate
 npm run db:migrate                  # applies prisma/migrations
 npm run db:seed                     # demo tenant + example questionnaire
-
-# 4. Run
 npm run dev:api                     # API on http://localhost:4000
 npm run dev:web                     # Dashboard on http://localhost:3000
 ```
@@ -266,6 +282,7 @@ advanced analytics. See `docs/ARCHITECTURE.md` → "Roadmap & extension points".
 ## Further docs
 
 - [`docs/GO_LIVE.md`](docs/GO_LIVE.md) — runbook: super admin, tenant onboarding, real calls, prod checklist
+- [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) — Docker Compose & managed-PaaS deployment
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — components, data flow, roadmap
 - [`docs/DATABASE.md`](docs/DATABASE.md) — schema, tables, RLS
 - [`docs/API.md`](docs/API.md) — endpoint reference
