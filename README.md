@@ -281,6 +281,7 @@ advanced analytics. See `docs/ARCHITECTURE.md` → "Roadmap & extension points".
 
 ## Further docs
 
+- [`docs/ADMIN_CONSOLE.md`](docs/ADMIN_CONSOLE.md) — the Super-Admin platform console (`/admin`)
 - [`docs/GO_LIVE.md`](docs/GO_LIVE.md) — runbook: super admin, tenant onboarding, real calls, prod checklist
 - [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) — Docker Compose & managed-PaaS deployment
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — components, data flow, roadmap

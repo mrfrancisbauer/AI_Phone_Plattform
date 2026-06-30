@@ -26,8 +26,10 @@ export async function authRoutes(app: FastifyInstance) {
     if (!user?.passwordHash || !(await verifyPassword(password, user.passwordHash))) {
       throw unauthorized('Invalid credentials');
     }
+    if (user.locked) throw unauthorized('Account is locked');
     const membership = pickMembership(user.tenantUsers, tenantId);
     if (!membership) throw unauthorized('No tenant access');
+    await prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
 
     const token = await signSession({
       sub: user.id,
@@ -86,6 +88,8 @@ export async function authRoutes(app: FastifyInstance) {
     });
     const membership = user?.tenantUsers[0];
     if (!user || !membership) throw unauthorized('No tenant access');
+    if (user.locked) throw unauthorized('Account is locked');
+    await prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
 
     const session = await signSession({
       sub: user.id,

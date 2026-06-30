@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { clearToken } from '@/lib/api';
 import { clearMeCache, useMe } from '@/lib/useMe';
-import { ROLES } from '@ai-phone/shared';
+import { ROLES, isPlatformRole } from '@ai-phone/shared';
 
 const baseLinks = [
   { href: '/', label: 'Übersicht' },
@@ -23,12 +23,12 @@ export function Nav() {
 
   const canManageUsers =
     me?.role === ROLES.TENANT_ADMIN || me?.role === ROLES.SUPER_ADMIN;
-  const isSuperAdmin = me?.role === ROLES.SUPER_ADMIN;
+  const isPlatform = me ? isPlatformRole(me.role) : false;
 
   const links = [
     ...baseLinks,
     ...(canManageUsers ? [{ href: '/users', label: 'Nutzer' }] : []),
-    ...(isSuperAdmin ? [{ href: '/admin', label: 'Admin (Mandanten)' }] : []),
+    ...(isPlatform ? [{ href: '/admin', label: '⚙ Admin-Konsole' }] : []),
   ];
 
   function logout() {

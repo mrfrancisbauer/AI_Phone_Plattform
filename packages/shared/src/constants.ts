@@ -4,18 +4,66 @@
  * the exact string values stored in the database.
  */
 
-/** Roles within a tenant (plus the cross-tenant super admin). */
+/** Roles within a tenant, plus cross-tenant platform-staff roles. */
 export const ROLES = {
   SUPER_ADMIN: 'super_admin',
+  /** Platform support: read tenants, test telephony, view logs/monitoring. */
+  PLATFORM_SUPPORT: 'platform_support',
+  /** Platform billing: costs, invoices, Stripe only. */
+  BILLING: 'billing',
   TENANT_ADMIN: 'tenant_admin',
   TENANT_MEMBER: 'tenant_member',
   READ_ONLY: 'read_only',
 } as const;
 export type Role = (typeof ROLES)[keyof typeof ROLES];
 
+/** Platform-staff roles that operate across tenants (Super-Admin console). */
+export const PLATFORM_ROLES: ReadonlyArray<Role> = [
+  ROLES.SUPER_ADMIN,
+  ROLES.PLATFORM_SUPPORT,
+  ROLES.BILLING,
+];
+export function isPlatformRole(role: Role): boolean {
+  return PLATFORM_ROLES.includes(role);
+}
+
+/**
+ * Platform-console capabilities. The backend enforces these on every admin
+ * endpoint; the frontend uses the same map to decide which nav sections and
+ * actions to render. Tenant-level capabilities are unchanged.
+ */
+export const PLATFORM_CAPS = {
+  DASHBOARD: 'platform:dashboard',
+  TENANTS_READ: 'platform:tenants:read',
+  TENANTS_WRITE: 'platform:tenants:write',
+  USERS_WRITE: 'platform:users:write',
+  PHONE_TEST: 'platform:phone:test',
+  PROVIDERS_READ: 'platform:providers:read',
+  PROVIDERS_WRITE: 'platform:providers:write',
+  AI_WRITE: 'platform:ai:write',
+  BILLING_READ: 'platform:billing:read',
+  MONITORING: 'platform:monitoring',
+  LOGS: 'platform:logs',
+  AUDIT: 'platform:audit',
+  SYSTEM: 'platform:system',
+  BACKUPS: 'platform:backups',
+  GDPR: 'platform:gdpr',
+} as const;
+
 /** Coarse capability checks derived from a role. */
 export const ROLE_CAPABILITIES: Record<Role, ReadonlyArray<string>> = {
   [ROLES.SUPER_ADMIN]: ['*'],
+  [ROLES.PLATFORM_SUPPORT]: [
+    PLATFORM_CAPS.DASHBOARD,
+    PLATFORM_CAPS.TENANTS_READ,
+    PLATFORM_CAPS.PHONE_TEST,
+    PLATFORM_CAPS.PROVIDERS_READ,
+    PLATFORM_CAPS.MONITORING,
+    PLATFORM_CAPS.LOGS,
+    PLATFORM_CAPS.AUDIT,
+    PLATFORM_CAPS.SYSTEM,
+  ],
+  [ROLES.BILLING]: [PLATFORM_CAPS.DASHBOARD, PLATFORM_CAPS.BILLING_READ],
   [ROLES.TENANT_ADMIN]: [
     'tenant:read',
     'tenant:write',
@@ -28,6 +76,32 @@ export const ROLE_CAPABILITIES: Record<Role, ReadonlyArray<string>> = {
   [ROLES.TENANT_MEMBER]: ['tenant:read', 'calls:read', 'calls:export'],
   [ROLES.READ_ONLY]: ['tenant:read', 'calls:read'],
 };
+
+export function roleHasCapability(role: Role, capability: string): boolean {
+  const caps = ROLE_CAPABILITIES[role] ?? [];
+  return caps.includes('*') || caps.includes(capability);
+}
+
+/** Subscription plans and their monthly platform fee (EUR), used for MRR/ARR. */
+export const PLANS = ['starter', 'business', 'enterprise'] as const;
+export type Plan = (typeof PLANS)[number];
+export const PLAN_PRICING: Record<Plan, number> = {
+  starter: 49,
+  business: 149,
+  enterprise: 499,
+};
+
+/** Industry options for the tenant wizard. */
+export const INDUSTRIES = [
+  'Kanzlei',
+  'Arztpraxis',
+  'Handwerk',
+  'Immobilien',
+  'Versicherung',
+  'E-Commerce',
+  'Agentur',
+  'Sonstiges',
+] as const;
 
 /** Supported questionnaire question types. */
 export const QUESTION_TYPES = {
