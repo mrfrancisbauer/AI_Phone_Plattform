@@ -1,0 +1,28 @@
+{
+  "name": "ai-phone-platform",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Multi-tenant SaaS platform for an AI phone assistant (inbound calls, questionnaire-driven conversations, email summaries, billing, GDPR).",
+  "license": "UNLICENSED",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "dev:api": "npm run dev --workspace @ai-phone/api",
+    "dev:web": "npm run dev --workspace @ai-phone/web",
+    "db:generate": "npm run db:generate --workspace @ai-phone/api",
+    "db:migrate": "npm run db:migrate --workspace @ai-phone/api",
+    "db:seed": "npm run db:seed --workspace @ai-phone/api"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3"
+  }
+}
