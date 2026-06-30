@@ -126,6 +126,18 @@ export function EmptyState({ children }: { children: ReactNode }) {
   return <div className="ac-empty muted">{children}</div>;
 }
 
-export function Spinner() {
-  return <p className="muted">Lädt…</p>;
+export function Spinner({ label = 'Lädt…' }: { label?: string }) {
+  return <p className="muted">{label}</p>;
+}
+
+/** Inline alert for errors / success / info / warnings. */
+export function Alert({ kind = 'error', children }: { kind?: 'error' | 'success' | 'info' | 'warning'; children: ReactNode }) {
+  if (!children) return null;
+  const ico = { error: '⚠', success: '✓', info: 'ℹ', warning: '⚠' }[kind];
+  return (
+    <div className={`alert alert-${kind}`} role={kind === 'error' ? 'alert' : 'status'}>
+      <span className="alert-ico">{ico}</span>
+      <span>{children}</span>
+    </div>
+  );
 }

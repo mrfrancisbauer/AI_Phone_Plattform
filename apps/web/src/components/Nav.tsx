@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { clearToken } from '@/lib/api';
 import { clearMeCache, useMe } from '@/lib/useMe';
+import { ThemeToggle } from '@/components/ThemeToggle';
 import { ROLES, isPlatformRole } from '@ai-phone/shared';
 
 const baseLinks = [
@@ -16,7 +17,7 @@ const baseLinks = [
   { href: '/settings', label: 'Einstellungen' },
 ];
 
-export function Nav() {
+export function Nav({ open = false }: { open?: boolean }) {
   const pathname = usePathname();
   const router = useRouter();
   const { me } = useMe();
@@ -38,7 +39,7 @@ export function Nav() {
   }
 
   return (
-    <aside className="sidebar">
+    <aside className={`sidebar${open ? ' open' : ''}`}>
       <div className="brand">📞 AI Phone</div>
       {me && (
         <div className="muted" style={{ fontSize: '0.78rem', marginBottom: '1rem', wordBreak: 'break-all' }}>
@@ -57,9 +58,12 @@ export function Nav() {
           );
         })}
       </nav>
-      <button className="btn secondary" style={{ marginTop: '1.5rem', width: '100%' }} onClick={logout}>
-        Abmelden
-      </button>
+      <div style={{ marginTop: 'auto', paddingTop: '1.25rem' }}>
+        <ThemeToggle />
+        <button className="btn secondary" style={{ marginTop: 8, width: '100%' }} onClick={logout}>
+          Abmelden
+        </button>
+      </div>
     </aside>
   );
 }

@@ -16,7 +16,7 @@ import { z } from 'zod';
 import { config } from '../config.js';
 import { prisma } from '../db.js';
 import { signMagicLink } from '../lib/auth.js';
-import { decrypt } from '../lib/crypto.js';
+import { tryDecrypt } from '../lib/crypto.js';
 import { forbidden, notFound } from '../lib/errors.js';
 import { audit } from '../lib/audit.js';
 import { createStarterContent } from '../lib/starter-content.js';
@@ -84,7 +84,7 @@ export async function tenantRoutes(app: FastifyInstance) {
         industry: t.industry,
         plan: t.plan,
         status: t.paused ? 'paused' : 'active',
-        phoneNumber: t.phoneNumbers[0] ? decrypt(t.phoneNumbers[0].e164Enc) : null,
+        phoneNumber: t.phoneNumbers[0] ? tryDecrypt(t.phoneNumbers[0].e164Enc) : null,
         users: t._count.tenantUsers,
         phoneNumbers: t._count.phoneNumbers,
         calls: t._count.calls,
@@ -130,7 +130,7 @@ export async function tenantRoutes(app: FastifyInstance) {
       createdAt: t.createdAt,
       counts: t._count,
       retention: t.retentionSetting,
-      phoneNumbers: t.phoneNumbers.map((p) => ({ id: p.id, provider: p.provider, e164: decrypt(p.e164Enc), active: p.active })),
+      phoneNumbers: t.phoneNumbers.map((p) => ({ id: p.id, provider: p.provider, e164: tryDecrypt(p.e164Enc), active: p.active })),
       assistants: t.assistants,
       cost: {
         total: Number(cost._sum.totalCost ?? 0),

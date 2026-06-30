@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { api } from '@/lib/api';
 import { money, dateTime } from '@/lib/format';
-import { Badge, EmptyState, PageHeader, Pagination, StatusDot, Toolbar } from '@/components/admin/ui';
+import { Alert, Badge, EmptyState, PageHeader, Pagination, StatusDot, Toolbar } from '@/components/admin/ui';
 import { TenantWizard } from '@/components/admin/TenantWizard';
 
 interface TenantRow {
@@ -62,7 +62,7 @@ export default function TenantsPage() {
           <input readOnly value={magicLink} onFocus={(e) => e.target.select()} style={{ marginTop: 6 }} />
         </div>
       )}
-      {error && <p className="error">{error}</p>}
+      {error && <Alert kind="error">{error}</Alert>}
 
       <Toolbar>
         <input placeholder="Suche (Name, Slug)…" value={q} onChange={(e) => { setPage(1); setQ(e.target.value); }} />

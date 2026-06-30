@@ -17,7 +17,7 @@ import {
 import { z } from 'zod';
 import { config } from '../config.js';
 import { prisma } from '../db.js';
-import { decrypt } from '../lib/crypto.js';
+import { decrypt, tryDecrypt } from '../lib/crypto.js';
 import { hashPassword, signMagicLink } from '../lib/auth.js';
 import { audit } from '../lib/audit.js';
 import { badRequest, notFound } from '../lib/errors.js';
@@ -150,7 +150,7 @@ export async function adminRoutes(app: FastifyInstance) {
       twilioConfigured: twilioConfigured(),
       items: rows.map((r) => ({
         id: r.id,
-        e164: decrypt(r.e164Enc),
+        e164: tryDecrypt(r.e164Enc) ?? '—',
         provider: r.provider,
         tenantId: r.tenantId,
         tenantName: r.tenant.name,

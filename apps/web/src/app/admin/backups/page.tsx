@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { dateTime } from '@/lib/format';
-import { Card, EmptyState, PageHeader, Spinner, StatusDot } from '@/components/admin/ui';
+import { Alert, Card, EmptyState, PageHeader, Spinner, StatusDot } from '@/components/admin/ui';
 
 interface Backup { id: string; status: string; sizeBytes: number | null; location: string | null; note: string | null; startedAt: string; completedAt: string | null }
 
@@ -32,7 +32,7 @@ export default function BackupsPage() {
   return (
     <>
       <PageHeader title="Backups" subtitle="Datenbank-Sicherungen" actions={<button className="btn" disabled={busy} onClick={start}>{busy ? 'Läuft…' : 'Backup starten'}</button>} />
-      {error && <p className="error">{error}</p>}
+      {error && <Alert kind="error">{error}</Alert>}
       {!backups ? <Spinner /> : (
         <>
           <div className="ac-grid k3">
