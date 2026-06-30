@@ -19,6 +19,17 @@ const ROLE_OPTIONS: { value: Role; label: string }[] = [
   { value: ROLES.READ_ONLY, label: 'Nur lesen' },
 ];
 
+function roleLabel(role: string): string {
+  return (
+    {
+      super_admin: 'Super Admin',
+      tenant_admin: 'Admin',
+      tenant_member: 'Mitarbeiter',
+      read_only: 'Nur lesen',
+    }[role] ?? role
+  );
+}
+
 export default function UsersPage() {
   const { me, loading: meLoading } = useMe();
   const [users, setUsers] = useState<TenantUser[]>([]);
@@ -133,30 +144,35 @@ export default function UsersPage() {
         <table>
           <thead><tr><th>E-Mail</th><th>Name</th><th>Rolle</th>{canManage && <th></th>}</tr></thead>
           <tbody>
-            {users.map((u) => (
-              <tr key={u.userId}>
-                <td>{u.email}</td>
-                <td>{u.name ?? '–'}</td>
-                <td>
-                  {canManage && u.userId !== me?.userId ? (
-                    <select value={u.role} onChange={(e) => changeRole(u, e.target.value as Role)} style={{ maxWidth: 160 }}>
-                      {ROLE_OPTIONS.map((o) => (
-                        <option key={o.value} value={o.value}>{o.label}</option>
-                      ))}
-                    </select>
-                  ) : (
-                    <span className="tag">{u.role}</span>
-                  )}
-                </td>
-                {canManage && (
-                  <td style={{ textAlign: 'right' }}>
-                    {u.userId !== me?.userId && (
-                      <button className="btn danger" onClick={() => remove(u)}>Entfernen</button>
+            {users.map((u) => {
+              const isTenantRole = ROLE_OPTIONS.some((o) => o.value === u.role);
+              const editable = canManage && u.userId !== me?.userId && isTenantRole;
+              const removable = canManage && u.userId !== me?.userId && u.role !== ROLES.SUPER_ADMIN;
+              return (
+                <tr key={u.userId}>
+                  <td>{u.email}</td>
+                  <td>{u.name ?? '–'}</td>
+                  <td>
+                    {editable ? (
+                      <select value={u.role} onChange={(e) => changeRole(u, e.target.value as Role)} style={{ maxWidth: 160 }}>
+                        {ROLE_OPTIONS.map((o) => (
+                          <option key={o.value} value={o.value}>{o.label}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <span className="tag">{roleLabel(u.role)}</span>
                     )}
                   </td>
-                )}
-              </tr>
-            ))}
+                  {canManage && (
+                    <td style={{ textAlign: 'right' }}>
+                      {removable && (
+                        <button className="btn danger" onClick={() => remove(u)}>Entfernen</button>
+                      )}
+                    </td>
+                  )}
+                </tr>
+              );
+            })}
             {users.length === 0 && <tr><td colSpan={4} className="muted">Keine Nutzer.</td></tr>}
           </tbody>
         </table>
