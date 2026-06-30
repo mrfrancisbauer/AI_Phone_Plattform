@@ -6,7 +6,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../db.js';
-import { decrypt, decryptNullable } from '../lib/crypto.js';
+import { decryptNullable, tryDecrypt } from '../lib/crypto.js';
 import { notFound } from '../lib/errors.js';
 import { audit } from '../lib/audit.js';
 
@@ -34,7 +34,7 @@ export async function callRoutes(app: FastifyInstance) {
     const items = rows.slice(0, q.limit).map((c) => ({
       id: c.id,
       status: c.status,
-      fromNumber: maskPhone(decrypt(c.fromNumberEnc)),
+      fromNumber: maskPhone(tryDecrypt(c.fromNumberEnc) ?? ''),
       callerName: c.summary?.callerName ?? null,
       concern: c.summary?.concern ?? null,
       leadCategory: c.leadCategory,
@@ -74,7 +74,7 @@ export async function callRoutes(app: FastifyInstance) {
       id: call.id,
       status: call.status,
       provider: call.provider,
-      fromNumber: decrypt(call.fromNumberEnc),
+      fromNumber: tryDecrypt(call.fromNumberEnc) ?? '—',
       consentGiven: call.consentGiven,
       callerEmailConsent: call.callerEmailConsent,
       leadCategory: call.leadCategory,
@@ -93,7 +93,7 @@ export async function callRoutes(app: FastifyInstance) {
           }
         : null,
       answers: call.answers.map((a) => ({ questionKey: a.questionKey, type: a.type, value: a.value })),
-      transcript: call.messages.map((m) => ({ role: m.role, text: decrypt(m.textEnc), at: m.createdAt })),
+      transcript: call.messages.map((m) => ({ role: m.role, text: tryDecrypt(m.textEnc) ?? '—', at: m.createdAt })),
       usage: call.usageEvent
         ? {
             sttCost: Number(call.usageEvent.sttCost),

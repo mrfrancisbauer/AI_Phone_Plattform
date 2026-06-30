@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
-import { Card, EmptyState, PageHeader, Spinner, StatusDot } from '@/components/admin/ui';
+import { Alert, Card, EmptyState, PageHeader, Spinner, StatusDot } from '@/components/admin/ui';
 
 interface Row { id: string; e164: string; provider: string; tenantId: string; tenantName: string; country: string; active: boolean }
 interface Resp { voiceWebhookUrl: string; twilioConfigured: boolean; items: Row[] }
@@ -31,7 +31,7 @@ export default function AdminPhoneNumbersPage() {
     <>
       <PageHeader title="Telefonnummern" subtitle="Alle Nummern aller Mandanten" />
       {msg && <p className="success">{msg}</p>}
-      {error && <p className="error">{error}</p>}
+      {error && <Alert kind="error">{error}</Alert>}
 
       <Card>
         <p className="muted" style={{ marginTop: 0, fontSize: '0.85rem' }}>

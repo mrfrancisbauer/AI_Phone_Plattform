@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { dateTime } from '@/lib/format';
-import { Badge, EmptyState, PageHeader, Pagination, StatusDot, Toolbar } from '@/components/admin/ui';
+import { Alert, Badge, EmptyState, PageHeader, Pagination, StatusDot, Toolbar } from '@/components/admin/ui';
 
 interface URow { userId: string; email: string; name: string | null; tenantId: string; tenantName: string; role: string; status: string; lastLoginAt: string | null }
 interface Resp { total: number; page: number; pageSize: number; items: URow[] }
@@ -54,7 +54,7 @@ export default function AdminUsersPage() {
     <>
       <PageHeader title="Benutzer" subtitle="Globale Benutzerverwaltung" />
       {msg && <div className="ac-card" style={{ borderColor: 'var(--accent)', marginBottom: '1rem' }}><span style={{ wordBreak: 'break-all' }}>{msg}</span></div>}
-      {error && <p className="error">{error}</p>}
+      {error && <Alert kind="error">{error}</Alert>}
 
       <Toolbar><input placeholder="Suche (E-Mail, Name)…" value={q} onChange={(e) => { setPage(1); setQ(e.target.value); }} /></Toolbar>
 

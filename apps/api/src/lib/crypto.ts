@@ -47,6 +47,22 @@ export function decryptNullable(value: string | null | undefined): string | null
   return value == null ? null : decrypt(value);
 }
 
+/**
+ * Best-effort decryption for list/aggregate views. Returns null instead of
+ * throwing when a value cannot be decrypted (e.g. a key rotation left legacy
+ * ciphertext, or a field was anonymized), so a single bad row never breaks an
+ * entire admin page. Use the throwing `decrypt` only where a failure must
+ * surface.
+ */
+export function tryDecrypt(value: string | null | undefined): string | null {
+  if (value == null) return null;
+  try {
+    return decrypt(value);
+  } catch {
+    return null;
+  }
+}
+
 /** Deterministic keyed hash for blind equality lookups (e.g. phone number). */
 export function blindHash(value: string): string {
   return createHmac('sha256', KEY).update(value.trim()).digest('hex');

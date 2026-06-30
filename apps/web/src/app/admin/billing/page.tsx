@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { api, API_URL, getToken } from '@/lib/api';
 import { money } from '@/lib/format';
-import { Card, PageHeader, Spinner, StatCard } from '@/components/admin/ui';
+import { Alert, Card, PageHeader, Spinner, StatCard } from '@/components/admin/ui';
 
 interface Billing {
   range: string; openaiCost: number; telephonyCost: number; sttCost: number; ttsCost: number;
@@ -39,7 +39,7 @@ export default function BillingPage() {
           </div>
         }
       />
-      {error && <p className="error">{error}</p>}
+      {error && <Alert kind="error">{error}</Alert>}
       {!data ? <Spinner /> : (
         <>
           <div className="ac-grid k4">

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { dateTime } from '@/lib/format';
-import { Card, EmptyState, PageHeader, Toolbar } from '@/components/admin/ui';
+import { Alert, Card, EmptyState, PageHeader, Toolbar } from '@/components/admin/ui';
 
 interface Audit { id: string; actorEmail: string | null; action: string; tenantName: string; targetType: string | null; targetId: string | null; ip: string | null; userAgent: string | null; createdAt: string }
 
@@ -32,7 +32,7 @@ export default function AuditPage() {
   return (
     <>
       <PageHeader title="Audit Log" subtitle="Jede Admin-Aktion wird protokolliert" />
-      {error && <p className="error">{error}</p>}
+      {error && <Alert kind="error">{error}</Alert>}
       <Toolbar><input placeholder="Suche (Aktion, Benutzer)…" value={q} onChange={(e) => setQ(e.target.value)} /></Toolbar>
       <Card>
         <table>

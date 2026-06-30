@@ -57,6 +57,10 @@ export async function api<T = unknown>(
     } catch {
       body = await res.text();
     }
+    // Technical detail stays in the console for developers; never in the UI.
+    if (typeof console !== 'undefined') {
+      console.error(`[api] ${options.method ?? 'GET'} ${path} → ${res.status}`, body);
+    }
     throw new ApiError(res.status, formatApiError(body, res.status), body);
   }
 
@@ -65,24 +69,42 @@ export async function api<T = unknown>(
   return (await res.json()) as T;
 }
 
-/** Turn an API error body into a single human-readable German message. */
+/**
+ * Map an API error to a friendly, user-facing German message. Raw technical
+ * details (stack traces, crypto/DB errors) are NEVER shown — they stay in the
+ * server logs / browser console. Status codes drive the message; only
+ * intentional domain messages (validation, conflicts) are surfaced.
+ */
 function formatApiError(body: unknown, status: number): string {
-  if (typeof body === 'string' && body.trim()) return body;
-  const b = body as { message?: string; error?: string; issues?: { path?: (string | number)[]; message?: string }[] };
-  if (b?.issues?.length) {
-    return b.issues
-      .map((i) => `${(i.path ?? []).join('.') || 'Eingabe'}: ${i.message ?? 'ungültig'}`)
-      .join(' · ');
-  }
-  if (b?.message) return b.message;
-  const fallback: Record<number, string> = {
-    401: 'Nicht angemeldet oder Sitzung abgelaufen.',
-    403: 'Keine Berechtigung für diese Aktion.',
-    404: 'Nicht gefunden.',
-    409: 'Konflikt — der Eintrag existiert bereits.',
-    429: 'Zu viele Anfragen. Bitte kurz warten.',
+  const b = (typeof body === 'object' && body ? body : {}) as {
+    message?: string;
+    error?: string;
+    issues?: { path?: (string | number)[]; message?: string }[];
   };
-  return fallback[status] ?? `Anfrage fehlgeschlagen (${status}).`;
+
+  switch (status) {
+    case 401:
+      return 'Ihre Sitzung ist abgelaufen. Bitte melden Sie sich erneut an.';
+    case 403:
+      return 'Sie haben keine Berechtigung für diese Aktion.';
+    case 404:
+      return 'Der Eintrag wurde nicht gefunden.';
+    case 429:
+      return 'Zu viele Anfragen. Bitte versuchen Sie es in einem Moment erneut.';
+  }
+  if (status === 400) {
+    // Validation errors are domain-level and safe to show as a hint.
+    if (b.issues?.length) {
+      const first = b.issues[0]?.message;
+      return first ? `Bitte überprüfen Sie Ihre Eingaben: ${first}` : 'Bitte überprüfen Sie Ihre Eingaben.';
+    }
+    return b.message && b.message.length < 160 ? b.message : 'Bitte überprüfen Sie Ihre Eingaben.';
+  }
+  if (status === 409) {
+    return b.message && b.message.length < 160 ? b.message : 'Der Eintrag existiert bereits.';
+  }
+  // 500 and anything unexpected → generic, never raw.
+  return 'Es ist ein technischer Fehler aufgetreten. Bitte versuchen Sie es später erneut.';
 }
 
 export { API_URL };
