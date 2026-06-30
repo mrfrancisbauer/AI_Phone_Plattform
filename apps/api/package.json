@@ -8,12 +8,13 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/server.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "node --test --import tsx ./src/**/*.test.ts",
+    "test": "node --test --import tsx \"./src/**/*.test.ts\"",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate deploy",
     "db:migrate:dev": "prisma migrate dev",
     "db:seed": "tsx prisma/seed.ts",
-    "db:reset": "prisma migrate reset --force"
+    "db:reset": "prisma migrate reset --force",
+    "create:super-admin": "tsx scripts/create-super-admin.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

@@ -36,23 +36,32 @@ npm run db:migrate
 > **Store secrets in a secret manager** (not the committed `.env`) in production.
 > See `docs/SECURITY.md`.
 
-## 2. Create the first super admin
+## 2. Create the platform owner (super admin)
 
-The super admin manages all tenants. Two options:
+The platform owner is a **super admin**: they manage every tenant. Super admins
+sign in like anyone else, but with the `super_admin` role on a dedicated internal
+**"platform"** home tenant (created automatically) — not on a customer tenant.
+The role bypasses tenant filters, so they can administer all customers.
 
-**A. Seed the demo super admin** (fastest for a first deploy):
+**Create your own owner account** (recommended for production):
 
 ```bash
-npm run db:seed
-# creates super@platform.local / super-password-123  (CHANGE THIS PASSWORD)
+npm run create:super-admin --workspace @ai-phone/api -- \
+  --email you@yourcompany.com --password "a-strong-password" --name "Your Name"
 ```
 
-**B. Create your own** via a one-off script / SQL: insert a `users` row with a
-scrypt `passwordHash`, then a `tenant_users` row with `role = super_admin` for
-any tenant. (A dedicated `create-super-admin` CLI is a small future addition.)
+(or set `SUPER_ADMIN_EMAIL` / `SUPER_ADMIN_PASSWORD` env vars). Re-running with an
+existing email just resets that user's password and ensures the role — safe and
+idempotent.
 
-Log in at `https://app.yourdomain.com/login`. As a super admin you'll see the
-**Admin (Mandanten)** entry in the navigation.
+> The demo seed (`npm run db:seed`) also creates a throwaway
+> `super@platform.local` / `super-password-123` for local testing — **do not use
+> it in production.**
+
+Log in at `https://app.yourdomain.com/login` with email + password. As a super
+admin you'll see the **Admin (Mandanten)** entry in the navigation — that's your
+customer-management console (provision tenants, pause/resume, view counts, get
+each customer admin's one-time login link).
 
 ## 3. Onboard a tenant (customer)
 
