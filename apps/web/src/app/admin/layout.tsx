@@ -66,7 +66,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           })}
         </nav>
         <div className="ac-side-foot">
-          <Link href="/" style={{ display: 'block', marginBottom: 8 }}>← Zur Kunden-App</Link>
           <ThemeToggle />
           <button className="btn secondary" style={{ width: '100%', marginTop: 8 }} onClick={logout}>Abmelden</button>
         </div>
