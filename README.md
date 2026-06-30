@@ -265,6 +265,7 @@ advanced analytics. See `docs/ARCHITECTURE.md` → "Roadmap & extension points".
 
 ## Further docs
 
+- [`docs/GO_LIVE.md`](docs/GO_LIVE.md) — runbook: super admin, tenant onboarding, real calls, prod checklist
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — components, data flow, roadmap
 - [`docs/DATABASE.md`](docs/DATABASE.md) — schema, tables, RLS
 - [`docs/API.md`](docs/API.md) — endpoint reference

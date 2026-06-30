@@ -27,9 +27,25 @@ All request bodies are validated with Zod; invalid input returns
 
 | Method | Path | Capability |
 |--------|------|-----------|
-| GET | `/api/admin/tenants` | super_admin |
-| POST | `/api/admin/tenants` | super_admin |
+| GET | `/api/admin/tenants` | super_admin — list with user/number/call counts |
+| POST | `/api/admin/tenants` | super_admin — bare tenant |
+| POST | `/api/admin/provision-tenant` | super_admin — tenant + admin + starter content; returns `magicLink` |
+| GET | `/api/admin/tenants/:id/users` | super_admin |
 | POST | `/api/admin/tenants/:id/resume` | super_admin or owning tenant admin |
+| POST | `/api/admin/tenants/:id/pause` | super_admin |
+
+`provision-tenant` body: `{ tenant: {...createTenant}, admin: { email, name?, password? }, seedStarterContent? }`.
+
+## Users (tenant-scoped)
+
+| Method | Path | Capability |
+|--------|------|-----------|
+| GET | `/api/users` | tenant:read — members of the current tenant |
+| POST | `/api/users` | users:write — `{ email, name?, role, password? }` → `{ userId, magicLink }` |
+| PUT | `/api/users/:userId/role` | users:write — `{ role }` |
+| DELETE | `/api/users/:userId` | users:write — removes the membership |
+
+Only a super admin may assign the `super_admin` role; you cannot change/remove yourself.
 
 ## Assistants
 
@@ -58,7 +74,9 @@ and `condition = { questionKey, operator: equals|not_equals|gte|lte|truthy, valu
 | Method | Path | Capability |
 |--------|------|-----------|
 | GET | `/api/phone-numbers` | tenant:read |
+| GET | `/api/phone-numbers/webhook-info` | tenant:read — webhook URL + whether Twilio creds are set |
 | POST | `/api/phone-numbers` | tenant:write — `{ provider, e164, assistantId?, active }` |
+| POST | `/api/phone-numbers/:id/configure-webhook` | tenant:write — points the Twilio number's voice webhook at the platform |
 | DELETE | `/api/phone-numbers/:id` | tenant:write |
 
 ## Calls

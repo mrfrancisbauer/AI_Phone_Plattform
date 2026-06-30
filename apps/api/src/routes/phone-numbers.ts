@@ -8,8 +8,13 @@ import { createPhoneNumberSchema } from '@ai-phone/shared';
 import { z } from 'zod';
 import { prisma } from '../db.js';
 import { blindHash, decrypt, encrypt } from '../lib/crypto.js';
-import { conflict, notFound } from '../lib/errors.js';
+import { badRequest, conflict, notFound } from '../lib/errors.js';
 import { audit } from '../lib/audit.js';
+import {
+  configureNumberWebhook,
+  twilioConfigured,
+  voiceWebhookUrl,
+} from '../services/twilio-provisioning.js';
 
 export async function phoneNumberRoutes(app: FastifyInstance) {
   app.addHook('preHandler', app.authenticate);
@@ -49,6 +54,29 @@ export async function phoneNumberRoutes(app: FastifyInstance) {
     await audit({ tenantId, actorId: req.auth!.userId, action: 'phone_number.create', targetId: created.id });
     return reply.status(201).send({ id: created.id });
   });
+
+  // The webhook URL Twilio should call + whether platform creds are present.
+  app.get('/phone-numbers/webhook-info', async () => {
+    return { voiceWebhookUrl: voiceWebhookUrl(), twilioConfigured: twilioConfigured() };
+  });
+
+  // One-click: point this number's Twilio voice webhook at the platform.
+  app.post(
+    '/phone-numbers/:id/configure-webhook',
+    { preHandler: [app.requireCapability('tenant:write')] },
+    async (req) => {
+      const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+      const tenantId = req.auth!.tenantId;
+      const number = await prisma.phoneNumber.findFirst({ where: { id, tenantId } });
+      if (!number) throw notFound('Phone number not found');
+      if (number.provider !== 'twilio') {
+        throw badRequest('Automatic webhook configuration is only available for Twilio numbers.');
+      }
+      const result = await configureNumberWebhook(decrypt(number.e164Enc));
+      await audit({ tenantId, actorId: req.auth!.userId, action: 'phone_number.configure_webhook', targetId: id });
+      return result;
+    },
+  );
 
   app.delete('/phone-numbers/:id', { preHandler: [app.requireCapability('tenant:write')] }, async (req, reply) => {
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);

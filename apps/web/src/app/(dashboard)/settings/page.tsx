@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
-import { RETENTION_DAYS } from '@ai-phone/shared';
+import { RETENTION_DAYS, TELEPHONY_PROVIDERS } from '@ai-phone/shared';
 import { money } from '@/lib/format';
 
 interface TenantSettings {
@@ -17,27 +17,69 @@ interface TenantSettings {
 interface Recipient { id: string; email: string; label: string | null }
 interface PhoneNumber { id: string; provider: string; e164: string; active: boolean }
 interface Retention { retentionDays: number; storeAudio: boolean }
+interface WebhookInfo { voiceWebhookUrl: string; twilioConfigured: boolean }
 
 export default function SettingsPage() {
   const [tenant, setTenant] = useState<TenantSettings | null>(null);
   const [recipients, setRecipients] = useState<Recipient[]>([]);
   const [numbers, setNumbers] = useState<PhoneNumber[]>([]);
   const [retention, setRetention] = useState<Retention>({ retentionDays: 90, storeAudio: false });
+  const [webhookInfo, setWebhookInfo] = useState<WebhookInfo | null>(null);
   const [newEmail, setNewEmail] = useState('');
+  const [newNumber, setNewNumber] = useState('');
+  const [newProvider, setNewProvider] = useState<string>('twilio');
   const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
 
   async function loadAll() {
-    const [t, r, n, ret] = await Promise.all([
+    const [t, r, n, ret, wh] = await Promise.all([
       api<TenantSettings>('/api/settings/tenant'),
       api<Recipient[]>('/api/settings/email-recipients'),
       api<PhoneNumber[]>('/api/phone-numbers'),
       api<Retention>('/api/settings/retention'),
+      api<WebhookInfo>('/api/phone-numbers/webhook-info'),
     ]);
     setTenant(t);
     setRecipients(r);
     setNumbers(n);
     setRetention(ret);
+    setWebhookInfo(wh);
+  }
+
+  async function reloadNumbers() {
+    setNumbers(await api<PhoneNumber[]>('/api/phone-numbers'));
+  }
+
+  async function addNumber() {
+    if (!newNumber) return;
+    setError('');
+    try {
+      await api('/api/phone-numbers', {
+        method: 'POST',
+        body: JSON.stringify({ provider: newProvider, e164: newNumber, active: true }),
+      });
+      setNewNumber('');
+      await reloadNumbers();
+      flash('Nummer hinzugefügt.');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Fehler');
+    }
+  }
+
+  async function configureWebhook(id: string) {
+    setError('');
+    try {
+      await api(`/api/phone-numbers/${id}/configure-webhook`, { method: 'POST' });
+      flash('Twilio-Webhook konfiguriert — die Nummer ist jetzt live.');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Webhook-Konfiguration fehlgeschlagen');
+    }
+  }
+
+  async function removeNumber(id: string) {
+    if (!confirm('Diese Nummer entfernen?')) return;
+    await api(`/api/phone-numbers/${id}`, { method: 'DELETE' });
+    await reloadNumbers();
   }
 
   useEffect(() => {
@@ -154,20 +196,53 @@ export default function SettingsPage() {
       </div>
 
       <h2>Telefonnummern</h2>
-      <div className="panel" style={{ padding: 0 }}>
+      <div className="panel">
+        {webhookInfo && (
+          <p className="muted" style={{ fontSize: '0.82rem', marginTop: 0 }}>
+            Webhook-URL für eingehende Anrufe (im Telefonie-Anbieter als „A call comes in" eintragen):
+            <br />
+            <code style={{ wordBreak: 'break-all' }}>{webhookInfo.voiceWebhookUrl}</code>
+            {!webhookInfo.twilioConfigured && (
+              <>
+                <br />
+                <span className="error">
+                  Hinweis: Auf der Plattform sind keine Twilio-Zugangsdaten hinterlegt — die
+                  automatische Webhook-Konfiguration ist deaktiviert.
+                </span>
+              </>
+            )}
+          </p>
+        )}
         <table>
-          <thead><tr><th>Nummer</th><th>Anbieter</th><th>Status</th></tr></thead>
+          <thead><tr><th>Nummer</th><th>Anbieter</th><th>Status</th><th></th></tr></thead>
           <tbody>
             {numbers.map((n) => (
               <tr key={n.id}>
                 <td>{n.e164}</td>
                 <td>{n.provider}</td>
                 <td>{n.active ? 'aktiv' : 'inaktiv'}</td>
+                <td style={{ textAlign: 'right' }}>
+                  {n.provider === 'twilio' && webhookInfo?.twilioConfigured && (
+                    <button className="btn secondary" onClick={() => configureWebhook(n.id)}>
+                      Webhook einrichten
+                    </button>
+                  )}{' '}
+                  <button className="btn danger" onClick={() => removeNumber(n.id)}>Entfernen</button>
+                </td>
               </tr>
             ))}
-            {numbers.length === 0 && <tr><td colSpan={3} className="muted">Keine Nummern zugeordnet.</td></tr>}
+            {numbers.length === 0 && <tr><td colSpan={4} className="muted">Keine Nummern zugeordnet.</td></tr>}
           </tbody>
         </table>
+        <div className="row" style={{ marginTop: '0.75rem' }}>
+          <select value={newProvider} onChange={(e) => setNewProvider(e.target.value)} style={{ maxWidth: 140 }}>
+            {TELEPHONY_PROVIDERS.map((p) => (
+              <option key={p} value={p}>{p}</option>
+            ))}
+          </select>
+          <input placeholder="+4930123456789" value={newNumber} onChange={(e) => setNewNumber(e.target.value)} />
+          <button className="btn" onClick={addNumber}>Hinzufügen</button>
+        </div>
       </div>
 
       <h2>Datenschutz &amp; Aufbewahrung (DSGVO)</h2>

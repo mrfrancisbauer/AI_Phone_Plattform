@@ -3,8 +3,10 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { clearToken } from '@/lib/api';
+import { clearMeCache, useMe } from '@/lib/useMe';
+import { ROLES } from '@ai-phone/shared';
 
-const links = [
+const baseLinks = [
   { href: '/', label: 'Übersicht' },
   { href: '/calls', label: 'Gespräche' },
   { href: '/questionnaire', label: 'Fragebogen' },
@@ -17,15 +19,34 @@ const links = [
 export function Nav() {
   const pathname = usePathname();
   const router = useRouter();
+  const { me } = useMe();
+
+  const canManageUsers =
+    me?.role === ROLES.TENANT_ADMIN || me?.role === ROLES.SUPER_ADMIN;
+  const isSuperAdmin = me?.role === ROLES.SUPER_ADMIN;
+
+  const links = [
+    ...baseLinks,
+    ...(canManageUsers ? [{ href: '/users', label: 'Nutzer' }] : []),
+    ...(isSuperAdmin ? [{ href: '/admin', label: 'Admin (Mandanten)' }] : []),
+  ];
 
   function logout() {
     clearToken();
+    clearMeCache();
     router.push('/login');
   }
 
   return (
     <aside className="sidebar">
       <div className="brand">📞 AI Phone</div>
+      {me && (
+        <div className="muted" style={{ fontSize: '0.78rem', marginBottom: '1rem', wordBreak: 'break-all' }}>
+          {me.email}
+          <br />
+          <span className="tag">{roleLabel(me.role)}</span>
+        </div>
+      )}
       <nav>
         {links.map((l) => {
           const active = l.href === '/' ? pathname === '/' : pathname.startsWith(l.href);
@@ -36,13 +57,20 @@ export function Nav() {
           );
         })}
       </nav>
-      <button
-        className="btn secondary"
-        style={{ marginTop: '1.5rem', width: '100%' }}
-        onClick={logout}
-      >
+      <button className="btn secondary" style={{ marginTop: '1.5rem', width: '100%' }} onClick={logout}>
         Abmelden
       </button>
     </aside>
+  );
+}
+
+function roleLabel(role: string): string {
+  return (
+    {
+      super_admin: 'Super Admin',
+      tenant_admin: 'Admin',
+      tenant_member: 'Mitarbeiter',
+      read_only: 'Nur lesen',
+    }[role] ?? role
   );
 }

@@ -155,7 +155,35 @@ export const twilioVoiceWebhookSchema = z.object({
 
 export const leadCategorySchema = z.enum(LEAD_CATEGORIES);
 
+// --- User management ---
+export const createUserSchema = z.object({
+  email: z.string().email(),
+  name: z.string().max(120).optional(),
+  role: roleSchema,
+  // Optional initial password; if omitted the user is onboarded via magic link.
+  password: z.string().min(8).max(200).optional(),
+});
+
+export const updateUserRoleSchema = z.object({
+  role: roleSchema,
+});
+
+// --- Tenant provisioning (super admin one-shot onboarding) ---
+export const provisionTenantSchema = z.object({
+  tenant: createTenantSchema,
+  admin: z.object({
+    email: z.string().email(),
+    name: z.string().max(120).optional(),
+    password: z.string().min(8).max(200).optional(),
+  }),
+  // Optionally seed a starter assistant + questionnaire so the tenant can go
+  // live immediately.
+  seedStarterContent: z.boolean().default(true),
+});
+
 export type CreateTenantInput = z.infer<typeof createTenantSchema>;
+export type CreateUserInput = z.infer<typeof createUserSchema>;
+export type ProvisionTenantInput = z.infer<typeof provisionTenantSchema>;
 export type UpsertAssistantInput = z.infer<typeof upsertAssistantSchema>;
 export type UpsertQuestionnaireInput = z.infer<typeof upsertQuestionnaireSchema>;
 export type CreatePhoneNumberInput = z.infer<typeof createPhoneNumberSchema>;
