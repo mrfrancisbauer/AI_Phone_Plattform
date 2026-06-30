@@ -1,6 +1,5 @@
 'use client';
 
-import { use } from 'react';
 import { useRouter } from 'next/navigation';
 import { useApi } from '@/lib/useApi';
 import { api } from '@/lib/api';
@@ -37,8 +36,8 @@ interface CallDetail {
   } | null;
 }
 
-export default function CallDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = use(params);
+export default function CallDetailPage({ params }: { params: { id: string } }) {
+  const { id } = params;
   const router = useRouter();
   const { data, loading, error } = useApi<CallDetail>(`/api/calls/${id}`);
 

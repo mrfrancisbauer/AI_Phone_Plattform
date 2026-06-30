@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { api, setToken } from '@/lib/api';
+import { ApiError, api, setToken } from '@/lib/api';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -25,7 +25,12 @@ export default function LoginPage() {
       setToken(res.token);
       router.push('/');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Login fehlgeschlagen');
+      // At the login screen a 401 means wrong credentials, not an expired session.
+      if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
+        setError('E-Mail oder Passwort ist falsch.');
+      } else {
+        setError(err instanceof Error ? err.message : 'Anmeldung fehlgeschlagen.');
+      }
     } finally {
       setLoading(false);
     }

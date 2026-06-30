@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 import { money, duration, dateTime, leadColor } from '@/lib/format';
@@ -22,8 +22,8 @@ interface TUser { userId: string; email: string; name: string | null; role: stri
 
 const TABS = ['Übersicht', 'Benutzer', 'Telefonnummern', 'Fragebogen', 'Assistent', 'Gespräche', 'Kosten', 'Logs', 'API Keys', 'DSGVO', 'Einstellungen'] as const;
 
-export default function TenantDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = use(params);
+export default function TenantDetailPage({ params }: { params: { id: string } }) {
+  const { id } = params;
   const router = useRouter();
   const [tab, setTab] = useState<(typeof TABS)[number]>('Übersicht');
   const [d, setD] = useState<Detail | null>(null);
