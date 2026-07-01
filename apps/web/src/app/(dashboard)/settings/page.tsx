@@ -15,39 +15,57 @@ interface TenantSettings {
   paused: boolean;
 }
 interface Recipient { id: string; email: string; label: string | null }
-interface PhoneNumber { id: string; provider: string; e164: string; active: boolean }
+interface PhoneNumber { id: string; provider: string; e164: string; active: boolean; assistantId: string | null; assistantName: string | null }
 interface Retention { retentionDays: number; storeAudio: boolean }
 interface WebhookInfo { voiceWebhookUrl: string; twilioConfigured: boolean }
+interface AssistantRef { id: string; name: string }
 
 export default function SettingsPage() {
   const [tenant, setTenant] = useState<TenantSettings | null>(null);
   const [recipients, setRecipients] = useState<Recipient[]>([]);
   const [numbers, setNumbers] = useState<PhoneNumber[]>([]);
+  const [assistants, setAssistants] = useState<AssistantRef[]>([]);
   const [retention, setRetention] = useState<Retention>({ retentionDays: 90, storeAudio: false });
   const [webhookInfo, setWebhookInfo] = useState<WebhookInfo | null>(null);
   const [newEmail, setNewEmail] = useState('');
   const [newNumber, setNewNumber] = useState('');
   const [newProvider, setNewProvider] = useState<string>('twilio');
+  const [newAssistantId, setNewAssistantId] = useState<string>('');
   const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
 
   async function loadAll() {
-    const [t, r, n, ret, wh] = await Promise.all([
+    const [t, r, n, ret, wh, a] = await Promise.all([
       api<TenantSettings>('/api/settings/tenant'),
       api<Recipient[]>('/api/settings/email-recipients'),
       api<PhoneNumber[]>('/api/phone-numbers'),
       api<Retention>('/api/settings/retention'),
       api<WebhookInfo>('/api/phone-numbers/webhook-info'),
+      api<AssistantRef[]>('/api/assistants'),
     ]);
     setTenant(t);
     setRecipients(r);
     setNumbers(n);
     setRetention(ret);
     setWebhookInfo(wh);
+    setAssistants(a);
+    // Auto-select the sole assistant so adding a number is one click.
+    if (a.length === 1) setNewAssistantId(a[0]!.id);
   }
 
   async function reloadNumbers() {
     setNumbers(await api<PhoneNumber[]>('/api/phone-numbers'));
+  }
+
+  async function reassign(id: string, assistantId: string) {
+    setError('');
+    try {
+      await api(`/api/phone-numbers/${id}`, { method: 'PATCH', body: JSON.stringify({ assistantId }) });
+      await reloadNumbers();
+      flash('Assistent zugeordnet.');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Fehler');
+    }
   }
 
   async function addNumber() {
@@ -60,10 +78,18 @@ export default function SettingsPage() {
       setError('Bitte die Nummer im Format +49… (mit Ländervorwahl, ohne Leerzeichen) angeben.');
       return;
     }
+    if (assistants.length === 0) {
+      setError('Bitte zuerst einen Assistenten erstellen, bevor eine Telefonnummer hinzugefügt werden kann.');
+      return;
+    }
+    if (assistants.length > 1 && !newAssistantId) {
+      setError('Bitte einen Assistenten für diese Telefonnummer auswählen.');
+      return;
+    }
     try {
       await api('/api/phone-numbers', {
         method: 'POST',
-        body: JSON.stringify({ provider: newProvider, e164, active: true }),
+        body: JSON.stringify({ provider: newProvider, e164, active: true, assistantId: newAssistantId || undefined }),
       });
       setNewNumber('');
       await reloadNumbers();
@@ -222,36 +248,64 @@ export default function SettingsPage() {
             )}
           </p>
         )}
-        <table>
-          <thead><tr><th>Nummer</th><th>Anbieter</th><th>Status</th><th></th></tr></thead>
-          <tbody>
-            {numbers.map((n) => (
-              <tr key={n.id}>
-                <td>{n.e164}</td>
-                <td>{n.provider}</td>
-                <td>{n.active ? 'aktiv' : 'inaktiv'}</td>
-                <td style={{ textAlign: 'right' }}>
-                  {n.provider === 'twilio' && webhookInfo?.twilioConfigured && (
-                    <button className="btn secondary" onClick={() => configureWebhook(n.id)}>
-                      Webhook einrichten
-                    </button>
-                  )}{' '}
-                  <button className="btn danger" onClick={() => removeNumber(n.id)}>Entfernen</button>
-                </td>
-              </tr>
-            ))}
-            {numbers.length === 0 && <tr><td colSpan={4} className="muted">Keine Nummern zugeordnet.</td></tr>}
-          </tbody>
-        </table>
-        <div className="row" style={{ marginTop: '0.75rem' }}>
-          <select value={newProvider} onChange={(e) => setNewProvider(e.target.value)} style={{ maxWidth: 140 }}>
-            {TELEPHONY_PROVIDERS.map((p) => (
-              <option key={p} value={p}>{p}</option>
-            ))}
-          </select>
-          <input placeholder="+4930123456789" value={newNumber} onChange={(e) => setNewNumber(e.target.value)} />
-          <button className="btn" onClick={addNumber}>Hinzufügen</button>
+        <div className="table-wrap">
+          <table>
+            <thead><tr><th>Nummer</th><th>Anbieter</th><th>Status</th><th>Assistent</th><th></th></tr></thead>
+            <tbody>
+              {numbers.map((n) => (
+                <tr key={n.id}>
+                  <td>{n.e164}</td>
+                  <td>{n.provider}</td>
+                  <td>{n.active ? 'aktiv' : 'inaktiv'}</td>
+                  <td>
+                    {n.assistantName ? (
+                      n.assistantName
+                    ) : assistants.length > 0 ? (
+                      <span className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
+                        <span className="error" style={{ margin: 0 }}>Kein Assistent zugeordnet</span>
+                        <select defaultValue="" onChange={(e) => e.target.value && reassign(n.id, e.target.value)} style={{ maxWidth: 200 }}>
+                          <option value="">Assistent zuordnen…</option>
+                          {assistants.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                        </select>
+                      </span>
+                    ) : (
+                      <span className="error" style={{ margin: 0 }}>Kein Assistent zugeordnet</span>
+                    )}
+                  </td>
+                  <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                    {n.provider === 'twilio' && webhookInfo?.twilioConfigured && (
+                      <button className="btn secondary sm" onClick={() => configureWebhook(n.id)}>
+                        Webhook einrichten
+                      </button>
+                    )}{' '}
+                    <button className="btn danger sm" onClick={() => removeNumber(n.id)}>Entfernen</button>
+                  </td>
+                </tr>
+              ))}
+              {numbers.length === 0 && <tr><td colSpan={5} className="muted">Keine Nummern zugeordnet.</td></tr>}
+            </tbody>
+          </table>
         </div>
+
+        {assistants.length === 0 ? (
+          <p className="error" style={{ marginTop: '0.75rem' }}>
+            Bitte zuerst einen Assistenten erstellen, bevor eine Telefonnummer hinzugefügt werden kann.
+          </p>
+        ) : (
+          <div className="row" style={{ marginTop: '0.75rem', flexWrap: 'wrap' }}>
+            <select value={newProvider} onChange={(e) => setNewProvider(e.target.value)} style={{ maxWidth: 140 }}>
+              {TELEPHONY_PROVIDERS.map((p) => (
+                <option key={p} value={p}>{p}</option>
+              ))}
+            </select>
+            <input placeholder="+4930123456789" value={newNumber} onChange={(e) => setNewNumber(e.target.value)} style={{ minWidth: 180 }} />
+            <select value={newAssistantId} onChange={(e) => setNewAssistantId(e.target.value)} style={{ maxWidth: 220 }}>
+              <option value="">Assistent wählen…</option>
+              {assistants.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+            </select>
+            <button className="btn" onClick={addNumber}>Hinzufügen</button>
+          </div>
+        )}
       </div>
 
       <h2>Datenschutz &amp; Aufbewahrung (DSGVO)</h2>

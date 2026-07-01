@@ -144,7 +144,13 @@ export async function adminRoutes(app: FastifyInstance) {
 
   // ---- Global phone numbers ----------------------------------------------
   app.get('/admin/phone-numbers', cap(PLATFORM_CAPS.TENANTS_READ), async () => {
-    const rows = await prisma.phoneNumber.findMany({ include: { tenant: { select: { id: true, name: true, country: true } } }, orderBy: { createdAt: 'desc' } });
+    const rows = await prisma.phoneNumber.findMany({
+      include: {
+        tenant: { select: { id: true, name: true, country: true } },
+        assistant: { select: { id: true, name: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
     return {
       voiceWebhookUrl: voiceWebhookUrl(),
       twilioConfigured: twilioConfigured(),
@@ -155,6 +161,8 @@ export async function adminRoutes(app: FastifyInstance) {
         tenantId: r.tenantId,
         tenantName: r.tenant.name,
         country: r.tenant.country,
+        assistantId: r.assistantId,
+        assistantName: r.assistant?.name ?? null,
         active: r.active,
       })),
     };

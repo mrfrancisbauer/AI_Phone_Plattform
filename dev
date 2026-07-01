@@ -87,7 +87,8 @@ kill_tree() {
 }
 
 proc_running() {
-  local name="$1" pidfile="$DEV_DIR/$name.pid"
+  local name="$1"
+  local pidfile="$DEV_DIR/$name.pid"
   [ -f "$pidfile" ] && kill -0 "$(cat "$pidfile")" 2>/dev/null
 }
 
@@ -101,7 +102,8 @@ start_proc() {
 }
 
 stop_proc() {
-  local name="$1" pidfile="$DEV_DIR/$name.pid"
+  local name="$1"
+  local pidfile="$DEV_DIR/$name.pid"
   if [ -f "$pidfile" ]; then
     kill_tree "$(cat "$pidfile")"
     rm -f "$pidfile"

@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { Alert, Card, EmptyState, PageHeader, Spinner, StatusDot } from '@/components/admin/ui';
 
-interface Row { id: string; e164: string; provider: string; tenantId: string; tenantName: string; country: string; active: boolean }
+interface Row { id: string; e164: string; provider: string; tenantId: string; tenantName: string; country: string; active: boolean; assistantId: string | null; assistantName: string | null }
 interface Resp { voiceWebhookUrl: string; twilioConfigured: boolean; items: Row[] }
 
 export default function AdminPhoneNumbersPage() {
@@ -43,20 +43,23 @@ export default function AdminPhoneNumbersPage() {
           <button className="btn secondary" disabled title="Im Mandanten-Dashboard verbinden">Bestehende verbinden</button>
           <button className="btn secondary" disabled title="SIP-Trunk konfigurieren">SIP verbinden</button>
         </div>
-        <table>
-          <thead><tr><th>Nummer</th><th>Provider</th><th>Mandant</th><th>Land</th><th>Status</th><th>Eingehend</th><th></th></tr></thead>
-          <tbody>
-            {data.items.map((r) => (
-              <tr key={r.id}>
-                <td>{r.e164}</td><td>{r.provider}</td><td>{r.tenantName}</td><td>{r.country}</td>
-                <td><StatusDot status={r.active ? 'active' : 'down'} label={r.active ? 'Aktiv' : 'Inaktiv'} /></td>
-                <td><StatusDot status="ok" label="Webhook" /></td>
-                <td>{r.provider === 'twilio' && data.twilioConfigured && <button className="btn secondary" onClick={() => configure(r)}>Webhook testen</button>}</td>
-              </tr>
-            ))}
-            {data.items.length === 0 && <tr><td colSpan={7}><EmptyState>Keine Nummern.</EmptyState></td></tr>}
-          </tbody>
-        </table>
+        <div className="table-wrap">
+          <table>
+            <thead><tr><th>Nummer</th><th>Provider</th><th>Mandant</th><th>Assistent</th><th>Land</th><th>Status</th><th></th></tr></thead>
+            <tbody>
+              {data.items.map((r) => (
+                <tr key={r.id}>
+                  <td>{r.e164}</td><td>{r.provider}</td><td>{r.tenantName}</td>
+                  <td>{r.assistantName ?? <span className="error" style={{ margin: 0 }}>Kein Assistent zugeordnet</span>}</td>
+                  <td>{r.country}</td>
+                  <td><StatusDot status={r.active ? 'active' : 'down'} label={r.active ? 'Aktiv' : 'Inaktiv'} /></td>
+                  <td>{r.provider === 'twilio' && data.twilioConfigured && <button className="btn secondary sm" onClick={() => configure(r)}>Webhook testen</button>}</td>
+                </tr>
+              ))}
+              {data.items.length === 0 && <tr><td colSpan={7}><EmptyState>Keine Nummern.</EmptyState></td></tr>}
+            </tbody>
+          </table>
+        </div>
       </Card>
     </>
   );

@@ -11,6 +11,7 @@ import { twilioVoiceWebhookSchema } from '@ai-phone/shared';
 import { config } from '../config.js';
 import { prisma } from '../db.js';
 import { blindHash, encrypt } from '../lib/crypto.js';
+import { classifyInbound, inboundLogLevel } from '../lib/phone-routing.js';
 import { validateTwilioSignature, twimlGather, twimlHangup } from '../lib/twilio.js';
 import { logger } from '../logger.js';
 import { handleTurn } from '../services/conversation.service.js';
@@ -45,23 +46,43 @@ export async function webhookRoutes(app: FastifyInstance) {
       },
     });
 
-    if (!phone || !phone.active || !phone.assistant) {
-      return twiml(reply, twimlHangup('Diese Nummer ist derzeit nicht erreichbar. Auf Wiederhören.'));
-    }
-    if (phone.tenant.paused) {
-      return twiml(reply, twimlHangup('Dieser Dienst ist vorübergehend pausiert. Bitte versuchen Sie es später erneut.'));
+    // Structured diagnostics so it is always clear WHY a call was (not) served.
+    const decision = classifyInbound(phone);
+    const diag = {
+      incomingTo: To,
+      incomingFrom: From,
+      callSid: CallSid,
+      phoneFound: Boolean(phone),
+      phoneActive: phone?.active ?? false,
+      tenantId: phone?.tenantId ?? null,
+      assistantId: phone?.assistant?.id ?? null,
+      assistantFound: Boolean(phone?.assistant),
+      tenantPaused: phone?.tenant?.paused ?? false,
+      reason: decision.reason,
+    };
+    logger[inboundLogLevel(decision.reason)](diag, `inbound call: ${decision.reason}`);
+
+    if (!decision.reachable) {
+      // The caller-facing message stays generic; the real cause is in the log.
+      const say =
+        decision.reason === 'paused'
+          ? 'Dieser Dienst ist vorübergehend pausiert. Bitte versuchen Sie es später erneut.'
+          : 'Diese Nummer ist derzeit nicht erreichbar. Auf Wiederhören.';
+      return twiml(reply, twimlHangup(say));
     }
 
-    const assistant = phone.assistant;
+    // classifyInbound guarantees phone + active assistant here.
+    const p = phone!;
+    const assistant = p.assistant!;
 
     // Idempotency: reuse an existing call for repeated webhook on same CallSid.
     const call = await prisma.call.upsert({
       where: { providerCallId: CallSid },
       create: {
-        tenantId: phone.tenantId,
+        tenantId: p.tenantId,
         assistantId: assistant.id,
-        phoneNumberId: phone.id,
-        provider: phone.provider,
+        phoneNumberId: p.id,
+        provider: p.provider,
         providerCallId: CallSid,
         status: 'consent_pending',
         fromNumberEnc: encrypt(From),
@@ -71,11 +92,11 @@ export async function webhookRoutes(app: FastifyInstance) {
     });
 
     await audit({
-      tenantId: phone.tenantId,
+      tenantId: p.tenantId,
       action: 'call.inbound',
       targetType: 'call',
       targetId: call.id,
-      metadata: { provider: phone.provider },
+      metadata: { provider: p.provider },
     });
 
     const greeting = `${assistant.greetingText} ${assistant.consentText}`;
