@@ -115,6 +115,7 @@ model Tenant {
   auditLogs        AuditLog[]
   emailRecipients  EmailRecipient[]
   retentionSetting DataRetentionSetting?
+  calendarConnections CalendarConnection[]
 
   @@map("tenants")
 }
@@ -471,6 +472,33 @@ model Backup {
   createdBy   String?
 
   @@map("backups")
+}
+
+// A tenant's connected calendar (Google or Microsoft). OAuth tokens are secrets
+// and are stored encrypted at rest (AES-256-GCM), never exposed to the frontend.
+// When an appointment call captures a date/time, the assistant writes the event
+// to this calendar. One connection per tenant+provider.
+model CalendarConnection {
+  id             String   @id @default(uuid())
+  tenantId       String
+  provider       String // "google" | "microsoft"
+  // Encrypted OAuth tokens.
+  accessTokenEnc String
+  refreshTokenEnc String?
+  expiresAt      DateTime?
+  // Target calendar + the account it belongs to (for display).
+  calendarId     String   @default("primary")
+  accountEmail   String?
+  scope          String?
+  status         String   @default("active") // active | revoked | error
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, provider])
+  @@index([tenantId])
+  @@map("calendar_connections")
 }
 
 // Platform-owned pool of routing DIDs for the "keep your number" flow. The
