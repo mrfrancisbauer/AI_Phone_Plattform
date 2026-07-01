@@ -10,45 +10,128 @@ interface AssistantRef { id: string; name: string }
 interface Props {
   assistants: AssistantRef[];
   webhookUrl: string;
-  twilioConfigured: boolean;
+  /** Whether the platform can search & buy DIDs via a provider API. */
+  canProvision: boolean;
   onClose: () => void;
   onCreated: () => void;
 }
 
-type Mode = 'choose' | 'carrier' | 'existing-setup' | 'twilio' | 'sip';
+type Mode = 'choose' | 'carrier' | 'forward-setup' | 'purchase' | 'sip';
+interface AvailableNumber { e164: string; friendlyName?: string }
 
 function normalize(n: string) {
   return n.replace(/[^\d+]/g, '');
 }
+function isE164(n: string) {
+  return /^\+[1-9]\d{6,14}$/.test(n);
+}
 
-export function NumberWizard({ assistants, webhookUrl, twilioConfigured, onClose, onCreated }: Props) {
+/** Short, carrier-specific hint for setting up call forwarding. */
+function forwardingHint(carrier: string): string {
+  switch (carrier) {
+    case 'Telekom':
+      return 'Im Telekom-Kundencenter unter „Anrufweiterschaltung" alle Anrufe auf die Zielnummer umleiten (oder per Tastenkombination **21*Zielnummer#).';
+    case 'Vodafone':
+      return 'In der MeinVodafone-App/Telefonanlage die permanente Rufumleitung auf die Zielnummer aktivieren.';
+    case 'O2':
+      return 'Im o2-Kundenbereich unter „Rufumleitung" alle Anrufe dauerhaft auf die Zielnummer weiterleiten.';
+    case 'Sipgate':
+      return 'In sipgate unter „Routing" eine Weiterleitung der Rufnummer auf die Zielnummer einrichten.';
+    case 'Placetel':
+    case 'STARFACE':
+    case '3CX':
+    case 'NFON':
+    case 'Microsoft Teams':
+      return `In Ihrer ${carrier}-Telefonanlage eine Rufumleitung/Routing-Regel auf die Zielnummer anlegen.`;
+    default:
+      return 'Richten Sie in Ihrem Anschluss/Ihrer Telefonanlage eine dauerhafte Rufumleitung auf die Zielnummer ein.';
+  }
+}
+
+export function NumberWizard({ assistants, webhookUrl, canProvision, onClose, onCreated }: Props) {
   const [mode, setMode] = useState<Mode>('choose');
   const [carrier, setCarrier] = useState('Telekom');
-  const [number, setNumber] = useState('');
+  const [ownNumber, setOwnNumber] = useState('');
+  const [target, setTarget] = useState('');
   const [assistantId, setAssistantId] = useState(assistants.length === 1 ? assistants[0]!.id : '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  // Purchase path.
+  const [results, setResults] = useState<AvailableNumber[]>([]);
+  const [searched, setSearched] = useState(false);
 
-  async function save(provider: 'sip' | 'twilio', configure: boolean) {
-    setError('');
-    const e164 = normalize(number);
-    if (!/^\+[1-9]\d{6,14}$/.test(e164)) {
-      setError('Bitte die Nummer im Format +49… (mit Ländervorwahl, ohne Leerzeichen) angeben.');
-      return;
+  function assistantOk(): boolean {
+    if (assistants.length === 0) {
+      setError('Bitte zuerst einen Assistenten erstellen, bevor eine Telefonnummer hinzugefügt werden kann.');
+      return false;
     }
     if (assistants.length > 1 && !assistantId) {
       setError('Bitte einen Assistenten auswählen.');
+      return false;
+    }
+    return true;
+  }
+
+  // "Keep your number": store the customer's own number as display metadata and
+  // the platform routing DID as the number inbound calls actually land on.
+  async function saveForward() {
+    setError('');
+    const own = normalize(ownNumber);
+    const did = normalize(target);
+    if (!isE164(own)) {
+      setError('Bitte Ihre Rufnummer im Format +49… (mit Ländervorwahl, ohne Leerzeichen) angeben.');
       return;
     }
+    if (!isE164(did)) {
+      setError('Bitte die Weiterleitungs-Zielnummer im Format +49… angeben.');
+      return;
+    }
+    if (!assistantOk()) return;
     setBusy(true);
     try {
-      const created = await api<{ id: string }>('/api/phone-numbers', {
+      // When the platform can manage DIDs via API the target sits on our Twilio
+      // account (webhook auto-wired); otherwise it is a manually managed DID.
+      await api('/api/phone-numbers', {
         method: 'POST',
-        body: JSON.stringify({ provider, e164, active: true, assistantId: assistantId || undefined }),
+        body: JSON.stringify({
+          provider: canProvision ? 'twilio' : 'sip',
+          e164: did,
+          displayNumber: own,
+          mode: 'forward',
+          active: true,
+          assistantId: assistantId || undefined,
+        }),
       });
-      if (configure && provider === 'twilio' && twilioConfigured) {
-        await api(`/api/phone-numbers/${created.id}/configure-webhook`, { method: 'POST' }).catch(() => {});
-      }
+      onCreated();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Fehler');
+      setBusy(false);
+    }
+  }
+
+  async function search() {
+    setError('');
+    setBusy(true);
+    try {
+      const res = await api<{ numbers: AvailableNumber[] }>('/api/phone-numbers/available?country=DE');
+      setResults(res.numbers);
+      setSearched(true);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Fehler bei der Nummernsuche');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function buy(e164: string) {
+    setError('');
+    if (!assistantOk()) return;
+    setBusy(true);
+    try {
+      await api('/api/phone-numbers/purchase', {
+        method: 'POST',
+        body: JSON.stringify({ e164, assistantId: assistantId || undefined }),
+      });
       onCreated();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Fehler');
@@ -83,16 +166,16 @@ export function NumberWizard({ assistants, webhookUrl, twilioConfigured, onClose
             <button className="choice" onClick={() => setMode('carrier')}>
               <span className="choice-badge">Empfehlung</span>
               <span className="choice-title">Bestehende Nummer behalten</span>
-              <span className="choice-sub">Ihre vorhandene Rufnummer per Weiterleitung anbinden — kein Nummernwechsel nötig.</span>
+              <span className="choice-sub">Ihre vorhandene Rufnummer per Weiterleitung anbinden — kein Nummernwechsel, kein Providerwechsel nötig.</span>
             </button>
-            <button className="choice" onClick={() => setMode('twilio')} disabled={!twilioConfigured}>
-              <span className="choice-title">Neue Twilio-Nummer kaufen {!twilioConfigured && <span className="muted">(nicht konfiguriert)</span>}</span>
-              <span className="choice-sub">Sofort eine neue Nummer über die Plattform bereitstellen.</span>
+            <button className="choice" onClick={() => setMode('purchase')} disabled={!canProvision}>
+              <span className="choice-title">Neue Nummer bereitstellen {!canProvision && <span className="muted">(nicht verfügbar)</span>}</span>
+              <span className="choice-sub">Sofort eine neue Rufnummer über die Plattform buchen — wird direkt angerufen.</span>
             </button>
             <button className="choice" onClick={() => setMode('sip')}>
-              <span className="choice-title">SIP verbinden</span>
-              <span className="choice-sub">Direkte SIP-Trunk-Anbindung.</span>
-              <span className="choice-badge">Coming Soon</span>
+              <span className="choice-title">SIP-Trunk verbinden</span>
+              <span className="choice-sub">Direkte SIP-Anbindung Ihrer Telefonanlage.</span>
+              <span className="choice-badge">Für Fortgeschrittene</span>
             </button>
           </div>
         )}
@@ -109,62 +192,109 @@ export function NumberWizard({ assistants, webhookUrl, twilioConfigured, onClose
             </div>
             <div className="row between" style={{ marginTop: 18 }}>
               <button className="btn secondary" onClick={() => setMode('choose')}>Zurück</button>
-              <button className="btn" onClick={() => setMode('existing-setup')}>Weiter</button>
+              <button className="btn" onClick={() => setMode('forward-setup')}>Weiter</button>
             </div>
           </div>
         )}
 
-        {mode === 'existing-setup' && (
+        {mode === 'forward-setup' && (
           <div>
-            <h3 style={{ marginTop: 0 }}>So verbinden Sie Ihre {carrier}-Nummer</h3>
+            <h3 style={{ marginTop: 0 }}>So behalten Sie Ihre {carrier}-Nummer</h3>
+            <p className="muted" style={{ marginTop: 0 }}>
+              Sie behalten Ihre Rufnummer und Ihren Vertrag. Eingehende Anrufe werden auf eine
+              Plattform-Zielnummer weitergeleitet — dort nimmt Ihr Assistent ab.
+            </p>
+
             <div className="guide-step">
               <span className="guide-num">1</span>
-              <div>
-                <strong>Weiterleitung einrichten</strong>
-                <p className="muted" style={{ margin: '2px 0 0' }}>Leiten Sie eingehende Anrufe Ihrer {carrier}-Nummer an unsere Plattform (SIP/Webhook) weiter. Die genaue anbieterspezifische Anleitung wird hier künftig mit Screenshots ergänzt.</p>
+              <div style={{ flex: 1 }}>
+                <strong>Ihre bestehende Rufnummer</strong>
+                <div style={{ marginTop: 6 }}>
+                  <input placeholder="+49 …" value={ownNumber} onChange={(e) => setOwnNumber(e.target.value)} />
+                </div>
               </div>
             </div>
+
             <div className="guide-step">
               <span className="guide-num">2</span>
               <div style={{ flex: 1 }}>
-                <strong>Webhook-URL hinterlegen</strong>
-                <div style={{ marginTop: 6 }}><CopyField value={webhookUrl} /></div>
+                <strong>Weiterleitungs-Zielnummer</strong>
+                <p className="muted" style={{ margin: '2px 0 6px' }}>
+                  Die Plattform-Rufnummer, auf die Sie weiterleiten (erhalten Sie von uns bzw. Ihrem Betreuer).
+                </p>
+                <input placeholder="+49 …" value={target} onChange={(e) => setTarget(e.target.value)} />
               </div>
             </div>
+
             <div className="guide-step">
               <span className="guide-num">3</span>
               <div style={{ flex: 1 }}>
-                <strong>Nummer &amp; Assistent zuordnen</strong>
-                <div style={{ marginTop: 6 }}>
-                  <input placeholder="+49 …" value={number} onChange={(e) => setNumber(e.target.value)} />
-                </div>
+                <strong>Weiterleitung bei {carrier} einrichten</strong>
+                <p className="muted" style={{ margin: '2px 0 0' }}>{forwardingHint(carrier)}</p>
+              </div>
+            </div>
+
+            <div className="guide-step">
+              <span className="guide-num">4</span>
+              <div style={{ flex: 1 }}>
+                <strong>Assistent zuordnen</strong>
                 <AssistantSelect />
               </div>
             </div>
+
+            <Alert kind="info">
+              Nach dem Speichern gilt die Nummer als „Warte auf ersten Anruf". Sobald ein
+              weitergeleiteter Anruf eingeht, wird die Weiterleitung automatisch als aktiv bestätigt.
+            </Alert>
+
             <div className="row between" style={{ marginTop: 18 }}>
               <button className="btn secondary" onClick={() => setMode('carrier')}>Zurück</button>
-              <button className="btn" disabled={busy || assistants.length === 0} onClick={() => save('sip', false)}>{busy ? 'Speichern…' : 'Nummer verbinden'}</button>
+              <button className="btn" disabled={busy || assistants.length === 0} onClick={saveForward}>{busy ? 'Speichern…' : 'Nummer verbinden'}</button>
             </div>
           </div>
         )}
 
-        {mode === 'twilio' && (
+        {mode === 'purchase' && (
           <div>
-            <h3 style={{ marginTop: 0 }}>Neue Twilio-Nummer</h3>
-            <label style={{ marginTop: 0 }}>Nummer (E.164)</label>
-            <input placeholder="+49 …" value={number} onChange={(e) => setNumber(e.target.value)} />
+            <h3 style={{ marginTop: 0 }}>Neue Rufnummer bereitstellen</h3>
             <AssistantSelect />
-            <p className="muted" style={{ fontSize: '0.85rem', marginTop: 10 }}>Der Webhook wird automatisch bei Twilio konfiguriert.</p>
+            <div className="row" style={{ marginTop: 12, gap: 8 }}>
+              <button className="btn secondary" disabled={busy} onClick={search}>{busy ? 'Suche…' : 'Verfügbare Nummern suchen'}</button>
+            </div>
+            {searched && results.length === 0 && (
+              <Alert kind="info">Derzeit sind keine Nummern verfügbar. Nutzen Sie „Bestehende Nummer behalten".</Alert>
+            )}
+            {results.length > 0 && (
+              <div className="table-wrap" style={{ marginTop: 12 }}>
+                <table>
+                  <tbody>
+                    {results.map((r) => (
+                      <tr key={r.e164}>
+                        <td><strong>{r.e164}</strong></td>
+                        <td style={{ textAlign: 'right' }}>
+                          <button className="btn sm" disabled={busy || assistants.length === 0} onClick={() => buy(r.e164)}>Buchen</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
             <div className="row between" style={{ marginTop: 18 }}>
               <button className="btn secondary" onClick={() => setMode('choose')}>Zurück</button>
-              <button className="btn" disabled={busy || assistants.length === 0} onClick={() => save('twilio', true)}>{busy ? 'Wird angelegt…' : 'Nummer hinzufügen'}</button>
             </div>
           </div>
         )}
 
         {mode === 'sip' && (
           <div>
-            <Alert kind="info">Die direkte SIP-Trunk-Anbindung wird in Kürze verfügbar sein. Nutzen Sie bis dahin „Bestehende Nummer behalten".</Alert>
+            <h3 style={{ marginTop: 0 }}>SIP-Trunk verbinden</h3>
+            <p className="muted" style={{ marginTop: 0 }}>
+              Richten Sie in Ihrer Telefonanlage eine Route auf die folgende Webhook-/Ziel-URL ein.
+              Die genaue Anbindung stimmen wir individuell mit Ihnen ab.
+            </p>
+            <CopyField value={webhookUrl} />
+            <Alert kind="info" >Für die meisten Kunden ist „Bestehende Nummer behalten" einfacher — SIP eignet sich für eigene Telefonanlagen.</Alert>
             <div className="row between" style={{ marginTop: 12 }}>
               <button className="btn secondary" onClick={() => setMode('choose')}>Zurück</button>
               <button className="btn" onClick={onClose}>Schließen</button>

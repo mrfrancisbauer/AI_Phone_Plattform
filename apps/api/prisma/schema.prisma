@@ -153,10 +153,21 @@ model PhoneNumber {
   id          String            @id @default(uuid())
   tenantId    String
   provider    TelephonyProvider
-  // E.164 number, encrypted. A deterministic lookup hash lets us match an
-  // inbound call to a tenant without decrypting every row.
+  // The ROUTING DID: the platform-owned number an inbound call actually lands
+  // on (the forward target). Encrypted, with a deterministic lookup hash so we
+  // can match an inbound call to a tenant without decrypting every row. The
+  // caller keeps their own number and forwards it here — the CPaaS (Twilio/
+  // Telnyx) remains the licensed carrier, the platform stays a software layer.
   e164Enc     String
   e164Hash    String            @unique
+  // The customer's OWN business number (the one they keep and forward FROM).
+  // Display metadata only; never used for routing. Encrypted (PII).
+  displayNumberEnc String?
+  // Forwarding lifecycle for the "keep your number" flow:
+  //   pending  — DID assigned, waiting for the first forwarded call to arrive
+  //   active   — verified: a call has been received on the DID (or no
+  //              forwarding is required because the DID is dialed directly)
+  forwardingStatus String            @default("pending")
   assistantId String?
   active      Boolean           @default(true)
   createdAt   DateTime          @default(now())

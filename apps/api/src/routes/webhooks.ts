@@ -91,6 +91,12 @@ export async function webhookRoutes(app: FastifyInstance) {
       update: {},
     });
 
+    // First forwarded call verifies the "keep your number" setup: flip the
+    // number's forwarding status to active so the dashboard confirms it works.
+    if (p.forwardingStatus === 'pending') {
+      await prisma.phoneNumber.update({ where: { id: p.id }, data: { forwardingStatus: 'active' } });
+    }
+
     await audit({
       tenantId: p.tenantId,
       action: 'call.inbound',

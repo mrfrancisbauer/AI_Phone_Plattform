@@ -7,14 +7,14 @@ import { HeroHead } from '@/components/app';
 import { Alert, Spinner, StatusDot } from '@/components/ui';
 import { NumberWizard } from '@/components/NumberWizard';
 
-interface PhoneNumber { id: string; provider: string; e164: string; active: boolean; assistantId: string | null; assistantName: string | null }
+interface PhoneNumber { id: string; provider: string; e164: string; displayNumber: string | null; forwardingStatus: string; active: boolean; assistantId: string | null; assistantName: string | null }
 interface AssistantRef { id: string; name: string }
-interface WebhookInfo { voiceWebhookUrl: string; twilioConfigured: boolean }
+interface TelephonyInfo { voiceWebhookUrl: string; canProvision: boolean; provisioningProvider: string | null }
 
 export default function PhonePage() {
   const [numbers, setNumbers] = useState<PhoneNumber[]>([]);
   const [assistants, setAssistants] = useState<AssistantRef[]>([]);
-  const [wh, setWh] = useState<WebhookInfo | null>(null);
+  const [wh, setWh] = useState<TelephonyInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [wizard, setWizard] = useState(false);
   const [error, setError] = useState('');
@@ -26,7 +26,7 @@ export default function PhonePage() {
       const [n, a, w] = await Promise.all([
         api<PhoneNumber[]>('/api/phone-numbers'),
         api<AssistantRef[]>('/api/assistants'),
-        api<WebhookInfo>('/api/phone-numbers/webhook-info'),
+        api<TelephonyInfo>('/api/phone-numbers/telephony-info'),
       ]);
       setNumbers(n);
       setAssistants(a);
@@ -70,12 +70,27 @@ export default function PhonePage() {
         <div className="body" style={{ padding: 0 }}>
           <div className="table-wrap">
             <table>
-              <thead><tr><th>Nummer</th><th>Provider</th><th>Status</th><th>Assistent</th><th></th></tr></thead>
+              <thead><tr><th>Nummer</th><th>Weiterleitung</th><th>Status</th><th>Assistent</th><th></th></tr></thead>
               <tbody>
                 {numbers.map((n) => (
                   <tr key={n.id}>
-                    <td><strong>{n.e164}</strong></td>
-                    <td>{n.provider}</td>
+                    <td>
+                      {n.displayNumber ? (
+                        <>
+                          <strong>{n.displayNumber}</strong>
+                          <div className="muted" style={{ fontSize: '0.8rem' }}>→ {n.e164}</div>
+                        </>
+                      ) : (
+                        <strong>{n.e164}</strong>
+                      )}
+                    </td>
+                    <td>
+                      {n.displayNumber ? (
+                        n.forwardingStatus === 'active'
+                          ? <StatusDot status="active" label="Aktiv" />
+                          : <StatusDot status="pending" label="Warte auf ersten Anruf" />
+                      ) : <span className="muted">Direkt</span>}
+                    </td>
                     <td><StatusDot status={n.active ? 'active' : 'down'} label={n.active ? 'Aktiv' : 'Inaktiv'} /></td>
                     <td>
                       {n.assistantName ? n.assistantName : assistants.length > 0 ? (
@@ -112,7 +127,7 @@ export default function PhonePage() {
         <NumberWizard
           assistants={assistants}
           webhookUrl={wh.voiceWebhookUrl}
-          twilioConfigured={wh.twilioConfigured}
+          canProvision={wh.canProvision}
           onClose={() => setWizard(false)}
           onCreated={() => { setWizard(false); flash('Nummer hinzugefügt.'); void load(); }}
         />
