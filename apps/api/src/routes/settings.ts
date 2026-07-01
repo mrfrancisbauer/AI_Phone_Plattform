@@ -26,6 +26,9 @@ export async function settingsRoutes(app: FastifyInstance) {
       paused: t.paused,
       brandName: t.brandName,
       brandColor: t.brandColor,
+      country: t.country,
+      timezone: t.timezone,
+      industry: t.industry,
     };
   });
 

@@ -24,7 +24,7 @@ export default function CostsPage() {
 
   return (
     <>
-      <h1>Kosten</h1>
+      <h1>Analytics</h1>
 
       <h2>Kostenhistorie (pro Monat)</h2>
       <div className="panel" style={{ padding: 0 }}>

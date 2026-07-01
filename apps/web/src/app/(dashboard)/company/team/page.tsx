@@ -94,8 +94,8 @@ export default function UsersPage() {
 
   return (
     <>
-      <h1>Nutzer</h1>
-      <p className="muted">Mitglieder Ihres Mandanten und ihre Rollen</p>
+      <h1>Team</h1>
+      <p className="muted">Mitglieder, Rollen und Einladungen</p>
       {error && <p className="error">{error}</p>}
       {msg && <p className="success">{msg}</p>}
       {magicLink && (

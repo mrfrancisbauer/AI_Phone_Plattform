@@ -7,7 +7,9 @@ const nextConfig = {
   // Emit a minimal self-contained server for small production Docker images.
   output: 'standalone',
   // In a monorepo, trace dependencies from the repo root.
-  outputFileTracingRoot: new URL('../../', import.meta.url).pathname,
+  experimental: {
+    outputFileTracingRoot: new URL('../../', import.meta.url).pathname,
+  },
 };
 
 export default nextConfig;
