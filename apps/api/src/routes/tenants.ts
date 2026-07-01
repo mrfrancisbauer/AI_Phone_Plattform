@@ -127,6 +127,7 @@ export async function tenantRoutes(app: FastifyInstance) {
       openaiMode: t.openaiMode,
       monthlyBudgetLimit: t.monthlyBudgetLimit ? Number(t.monthlyBudgetLimit) : null,
       autoPauseOnBudget: t.autoPauseOnBudget,
+      realtimeEnabled: t.realtimeEnabled,
       createdAt: t.createdAt,
       counts: t._count,
       retention: t.retentionSetting,
@@ -250,6 +251,7 @@ export async function tenantRoutes(app: FastifyInstance) {
         plan: body.plan,
         telephonyMode: body.telephonyMode,
         openaiMode: body.openaiMode,
+        realtimeEnabled: body.realtimeEnabled,
       },
     });
     await audit({ tenantId: id, actorId: req.auth!.userId, actorEmail: req.auth!.email, action: 'tenant.update', targetId: id, ip: req.ip });

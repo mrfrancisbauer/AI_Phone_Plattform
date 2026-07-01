@@ -10,7 +10,7 @@ import { PLANS } from '@ai-phone/shared';
 interface Detail {
   id: string; name: string; slug: string; industry: string | null; country: string; timezone: string; locale: string;
   plan: string; status: string; telephonyMode: string; openaiMode: string;
-  monthlyBudgetLimit: number | null; autoPauseOnBudget: boolean; createdAt: string;
+  monthlyBudgetLimit: number | null; autoPauseOnBudget: boolean; realtimeEnabled: boolean; createdAt: string;
   counts: { tenantUsers: number; phoneNumbers: number; calls: number; assistants: number };
   retention: { retentionDays: number; storeAudio: boolean } | null;
   phoneNumbers: { id: string; provider: string; e164: string; active: boolean }[];
@@ -172,12 +172,13 @@ function SettingsTab({ tenant, reload, onMsg, onDeleted }: { tenant: Detail; rel
   const [plan, setPlan] = useState(tenant.plan);
   const [budget, setBudget] = useState(tenant.monthlyBudgetLimit?.toString() ?? '');
   const [autoStop, setAutoStop] = useState(tenant.autoPauseOnBudget);
+  const [realtime, setRealtime] = useState(tenant.realtimeEnabled);
   const [busy, setBusy] = useState(false);
 
   async function save() {
     setBusy(true);
     try {
-      await api(`/api/admin/tenants/${tenant.id}`, { method: 'PUT', body: JSON.stringify({ plan, monthlyBudgetLimit: budget ? Number(budget) : null, autoPauseOnBudget: autoStop }) });
+      await api(`/api/admin/tenants/${tenant.id}`, { method: 'PUT', body: JSON.stringify({ plan, monthlyBudgetLimit: budget ? Number(budget) : null, autoPauseOnBudget: autoStop, realtimeEnabled: realtime }) });
       onMsg('Gespeichert.');
       await reload();
     } finally { setBusy(false); }
@@ -195,6 +196,7 @@ function SettingsTab({ tenant, reload, onMsg, onDeleted }: { tenant: Detail; rel
         <div><label>Monatsbudget (EUR)</label><input type="number" step="0.01" value={budget} onChange={(e) => setBudget(e.target.value)} /></div>
       </div>
       <label className="row" style={{ marginTop: 12 }}><input type="checkbox" style={{ width: 'auto' }} checked={autoStop} onChange={(e) => setAutoStop(e.target.checked)} /><span style={{ marginLeft: 8 }}>Automatischer Stopp bei 100 %</span></label>
+      <label className="row" style={{ marginTop: 8 }}><input type="checkbox" style={{ width: 'auto' }} checked={realtime} onChange={(e) => setRealtime(e.target.checked)} /><span style={{ marginLeft: 8 }}>Realtime-Gespräche (Beta) — LLM-geführter Dialog mit Barge-in statt turn-based</span></label>
       <div className="row" style={{ marginTop: 16 }}>
         <button className="btn" disabled={busy} onClick={save}>Speichern</button>
         <button className="btn danger" onClick={del}>Mandant löschen</button>

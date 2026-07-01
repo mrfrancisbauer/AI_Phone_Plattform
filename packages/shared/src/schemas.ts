@@ -60,6 +60,8 @@ export const createTenantSchema = z.object({
   plan: planSchema.optional(),
   telephonyMode: z.enum(['platform_twilio', 'own_twilio', 'sip', 'telnyx']).optional(),
   openaiMode: z.enum(['platform', 'own']).optional(),
+  // Realtime (ConversationRelay) conversations — per-tenant beta flag.
+  realtimeEnabled: z.boolean().optional(),
 });
 
 export const updateTenantSchema = createTenantSchema.partial().omit({ slug: true });

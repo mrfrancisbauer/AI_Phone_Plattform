@@ -14,6 +14,7 @@ import { settingsRoutes } from './settings.js';
 import { gdprRoutes } from './gdpr.js';
 import { simulateRoutes } from './simulate.js';
 import { integrationRoutes, integrationCallbackRoutes } from './integrations.js';
+import { realtimeRoutes } from './realtime.js';
 
 /** Register all route modules. Webhooks are mounted without the /api prefix. */
 export async function registerRoutes(app: FastifyInstance) {
@@ -21,6 +22,8 @@ export async function registerRoutes(app: FastifyInstance) {
   await app.register(webhookRoutes);
   // Public OAuth callback (browser redirect, no /api prefix, no session).
   await app.register(integrationCallbackRoutes);
+  // ConversationRelay WebSocket (signed single-call token instead of a session).
+  await app.register(realtimeRoutes);
 
   await app.register(
     async (api) => {

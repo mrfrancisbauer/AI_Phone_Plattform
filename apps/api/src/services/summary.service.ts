@@ -119,8 +119,14 @@ export async function finalizeCall(callId: string): Promise<void> {
       ? call.durationSeconds
       : Math.max(1, Math.round((Date.now() - call.startedAt.getTime()) / 1000));
 
-  // Token usage = summarizer usage + a rough estimate for the live dialogue.
-  const dialogueTokens = transcript.reduce((sum, m) => sum + estimateTokens(m.text), 0);
+  // Token usage: realtime calls record REAL dialogue tokens on the call state;
+  // turn-based calls fall back to a transcript-length estimate.
+  const realtimeUsage = (call.state as { realtimeUsage?: { inputTokens?: number; outputTokens?: number } } | null)
+    ?.realtimeUsage;
+  const dialogueTokens = realtimeUsage
+    ? (realtimeUsage.inputTokens ?? 0)
+    : transcript.reduce((sum, m) => sum + estimateTokens(m.text), 0);
+  const dialogueOutputTokens = realtimeUsage?.outputTokens ?? 0;
 
   await prisma.callSummary.upsert({
     where: { callId: call.id },
@@ -153,7 +159,7 @@ export async function finalizeCall(callId: string): Promise<void> {
     usage: {
       durationSeconds,
       llmInputTokens: usage.inputTokens + dialogueTokens,
-      llmOutputTokens: usage.outputTokens,
+      llmOutputTokens: usage.outputTokens + dialogueOutputTokens,
     },
   });
 

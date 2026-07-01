@@ -13,9 +13,11 @@ import { prisma } from '../db.js';
 import { blindHash, encrypt } from '../lib/crypto.js';
 import { classifyEndOfCall, parseCallDuration } from '../lib/call-lifecycle.js';
 import { classifyInbound, inboundLogLevel } from '../lib/phone-routing.js';
-import { validateTwilioSignature, twimlGather, twimlHangup } from '../lib/twilio.js';
+import { validateTwilioSignature, twimlConversationRelay, twimlGather, twimlHangup } from '../lib/twilio.js';
 import { defaultTwilioVoice, resolveTwilioVoice } from '../lib/voice.js';
 import { logger } from '../logger.js';
+import { resolveRelayVoice } from '../realtime/relay-voice.js';
+import { signCallToken } from '../realtime/token.js';
 import { handleTurn } from '../services/conversation.service.js';
 import { recordUsage } from '../services/cost.service.js';
 import { finalizeCall } from '../services/summary.service.js';
@@ -110,12 +112,60 @@ export async function webhookRoutes(app: FastifyInstance) {
     });
 
     const greeting = `${assistant.greetingText} ${assistant.consentText}`;
+
+    // --- Realtime (ConversationRelay) branch, per-tenant beta ---
+    // Requires the global flag, the tenant flag, and an LLM key; anything
+    // missing → classic turn-based flow. The relay action URL falls back to
+    // the turn-based flow too, so a relay failure never strands the caller.
+    if (config.REALTIME_ENABLED && p.tenant.realtimeEnabled && config.OPENAI_API_KEY) {
+      const token = await signCallToken(call.id);
+      const wsUrl = `${config.API_PUBLIC_URL.replace(/^http/, 'ws')}/realtime/${token}`;
+      const relayVoice = resolveRelayVoice(assistant.voice, assistant.locale);
+      logger.info({ callId: call.id, persona: assistant.voice, relayVoice }, 'inbound call: realtime mode');
+      return twiml(reply, twimlConversationRelay({
+        wsUrl,
+        welcomeGreeting: greeting,
+        language: localeToTwilio(assistant.locale),
+        ttsProvider: relayVoice?.ttsProvider,
+        voice: relayVoice?.voice,
+        actionUrl: `${config.API_PUBLIC_URL}/webhooks/twilio/relay-action?callId=${call.id}`,
+      }));
+    }
+
     const action = `${config.API_PUBLIC_URL}/webhooks/twilio/gather?callId=${call.id}`;
     const ttsVoice = resolveTwilioVoice(assistant.voice, assistant.locale);
     logger.info({ callId: call.id, persona: assistant.voice, ttsVoice }, 'inbound call: resolved TTS voice');
     return twiml(reply, twimlGather(greeting, action, {
       language: localeToTwilio(assistant.locale),
       voice: ttsVoice,
+    }));
+  });
+
+  // --- Relay session ended (regularly or on error) ---
+  // Twilio requests this after <Connect><ConversationRelay> returns. If the
+  // conversation is finished we hang up; otherwise the relay failed mid-call
+  // and we seamlessly continue in the classic turn-based flow.
+  app.post('/webhooks/twilio/relay-action', async (req, reply) => {
+    if (!verify(req)) return reply.status(403).send('invalid signature');
+    const callId = (req.query as { callId?: string }).callId;
+    if (!callId) return reply.status(400).send('missing callId');
+
+    const call = await prisma.call.findUnique({
+      where: { id: callId },
+      select: { status: true, assistant: { select: { locale: true, voice: true } } },
+    });
+    if (!call || ['completed', 'declined', 'failed'].includes(call.status)) {
+      return twiml(reply, '<?xml version="1.0" encoding="UTF-8"?>\n<Response><Hangup/></Response>');
+    }
+
+    logger.warn({ callId }, 'relay ended mid-call — falling back to turn-based flow');
+    const locale = call.assistant.locale ?? 'de';
+    const result = await handleTurn(callId, '').catch(() => null);
+    const say = result?.say ?? 'Entschuldigung, es gab eine kurze Störung. Wo waren wir stehen geblieben?';
+    const action = `${config.API_PUBLIC_URL}/webhooks/twilio/gather?callId=${callId}`;
+    return twiml(reply, twimlGather(say, action, {
+      language: localeToTwilio(locale),
+      voice: resolveTwilioVoice(call.assistant.voice, locale),
     }));
   });
 

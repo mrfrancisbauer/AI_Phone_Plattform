@@ -2,6 +2,7 @@ import Fastify, { type FastifyError, type FastifyInstance, type FastifyReply, ty
 import cors from '@fastify/cors';
 import formbody from '@fastify/formbody';
 import rateLimit from '@fastify/rate-limit';
+import websocket from '@fastify/websocket';
 import { ZodError } from 'zod';
 import { config } from './config.js';
 import { loggerOptions } from './logger.js';
@@ -52,6 +53,9 @@ export async function buildApp(): Promise<FastifyInstance> {
 
   // Parse form-encoded bodies (telephony webhooks post application/x-www-form-urlencoded).
   await app.register(formbody);
+
+  // WebSocket support for the realtime (ConversationRelay) endpoint.
+  await app.register(websocket);
 
   await app.register(cors, {
     origin: config.WEB_ORIGIN.split(',').map((o) => o.trim()),

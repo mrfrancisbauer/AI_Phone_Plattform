@@ -36,6 +36,16 @@ const envSchema = z.object({
   // universally enabled on Twilio); basic = Twilio's legacy voice.
   TTS_VOICE_PROVIDER: z.enum(['google', 'polly', 'basic']).default('google'),
 
+  // Realtime (ConversationRelay) conversations — global kill-switch. A tenant
+  // additionally needs tenant.realtimeEnabled AND an OPENAI_API_KEY; otherwise
+  // calls use the classic turn-based flow.
+  REALTIME_ENABLED: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((v) => v === 'true'),
+  // Hard cap per realtime call before the assistant politely wraps up.
+  REALTIME_MAX_MINUTES: z.coerce.number().int().positive().default(10),
+
   OPENAI_API_KEY: z.string().optional(),
   LLM_MODEL: z.string().default('gpt-4o-mini'),
   LLM_PRICE_INPUT_PER_1K: z.coerce.number().default(0.00015),
