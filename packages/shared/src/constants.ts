@@ -145,6 +145,19 @@ export type MessageRole = (typeof MESSAGE_ROLE)[keyof typeof MESSAGE_ROLE];
 export const TELEPHONY_PROVIDERS = ['twilio', 'telnyx', 'sip'] as const;
 export type TelephonyProvider = (typeof TELEPHONY_PROVIDERS)[number];
 
+/** Calendar providers a tenant can connect to auto-create appointment events. */
+export const CALENDAR_PROVIDERS = ['google', 'microsoft'] as const;
+export type CalendarProvider = (typeof CALENDAR_PROVIDERS)[number];
+
+/** Friendly labels for calendar providers (customer-facing). */
+export const CALENDAR_PROVIDER_LABELS: Record<CalendarProvider, string> = {
+  google: 'Google Kalender',
+  microsoft: 'Microsoft Outlook',
+};
+
+/** Default duration (minutes) for an auto-created appointment event. */
+export const DEFAULT_APPOINTMENT_MINUTES = 30;
+
 /** Budget-alert thresholds (fraction of monthly limit). */
 export const BUDGET_ALERT_THRESHOLDS = [0.5, 0.8, 1.0] as const;
 

@@ -103,6 +103,18 @@ claims from it automatically. See `docs/TELEPHONY.md` for the cost/responsibilit
 | POST | `/api/admin/routing-numbers` | providers:write — `{ e164, provider?, country?, purchase? }` (purchase=true buys it first) |
 | DELETE | `/api/admin/routing-numbers/:id` | providers:write — only when unassigned |
 
+## Integrations (calendar)
+
+Connect a tenant's Google/Outlook calendar so appointment calls create events.
+See `docs/INTEGRATIONS.md`. OAuth tokens are stored encrypted, never returned.
+
+| Method | Path | Capability |
+|--------|------|-----------|
+| GET | `/api/integrations/calendar` | tenant:read — providers, configured flag, connection status |
+| POST | `/api/integrations/calendar/:provider/connect` | tenant:write — returns `{ url }` (provider consent) |
+| DELETE | `/api/integrations/calendar/:provider` | tenant:write — disconnect |
+| GET | `/integrations/calendar/callback` | public — OAuth redirect target (signed `state`), **not** under `/api` |
+
 ## Calls
 
 | Method | Path | Notes |

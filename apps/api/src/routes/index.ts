@@ -13,11 +13,14 @@ import { usageRoutes } from './usage.js';
 import { settingsRoutes } from './settings.js';
 import { gdprRoutes } from './gdpr.js';
 import { simulateRoutes } from './simulate.js';
+import { integrationRoutes, integrationCallbackRoutes } from './integrations.js';
 
 /** Register all route modules. Webhooks are mounted without the /api prefix. */
 export async function registerRoutes(app: FastifyInstance) {
   await app.register(healthRoutes);
   await app.register(webhookRoutes);
+  // Public OAuth callback (browser redirect, no /api prefix, no session).
+  await app.register(integrationCallbackRoutes);
 
   await app.register(
     async (api) => {
@@ -33,6 +36,7 @@ export async function registerRoutes(app: FastifyInstance) {
       await api.register(settingsRoutes);
       await api.register(gdprRoutes);
       await api.register(simulateRoutes);
+      await api.register(integrationRoutes);
     },
     { prefix: '/api' },
   );

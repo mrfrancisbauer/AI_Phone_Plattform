@@ -14,9 +14,11 @@ import {
 } from '@ai-phone/shared';
 import { prisma } from '../db.js';
 import { decrypt, decryptNullable, encryptNullable } from '../lib/crypto.js';
+import { buildAppointmentDraft } from '../lib/calendar-appointment.js';
 import { logger } from '../logger.js';
 import { estimateTokens, generateSummary } from './llm.js';
 import { recordUsage } from './cost.service.js';
+import { createAppointment } from './calendar.service.js';
 import { sendEmail } from './email/index.js';
 import { renderCallerSummary, renderTenantSummary } from './email/templates.js';
 
@@ -200,6 +202,22 @@ export async function finalizeCall(callId: string): Promise<void> {
       kind: 'caller_summary',
       email: callerMail,
     });
+  }
+
+  // --- Calendar (best-effort) ---
+  // If the call captured a date/time and the tenant has a connected calendar,
+  // write the appointment. Never let a calendar failure break finalization.
+  const appointment = buildAppointmentDraft({
+    answers: answerView.map((a) => ({ key: a.key, type: a.type, value: a.rawValue })),
+    tenantName: call.tenant.name,
+    callerName,
+    callerPhone,
+    summary,
+  });
+  if (appointment) {
+    await createAppointment(call.tenantId, appointment, call.id).catch((err) =>
+      logger.error({ err, callId: call.id }, 'createAppointment threw'),
+    );
   }
 
   logger.info({ callId: call.id, lead: lead.category, cost: cost.totalCost }, 'call finalized');

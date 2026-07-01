@@ -38,6 +38,7 @@ export const APP_NAV: NavSection[] = [
       { href: '/company/privacy', label: 'Datenschutz', icon: '🔒' },
       { href: '/company/notifications', label: 'Benachrichtigungen', icon: '🔔' },
       { href: '/company/billing', label: 'Abrechnung', icon: '💳' },
+      { href: '/company/integrations', label: 'Integrationen', icon: '🔗' },
       { href: '/company/api', label: 'API & Webhooks', icon: '🔌' },
     ],
   },

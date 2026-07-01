@@ -48,6 +48,15 @@ const envSchema = z.object({
 
   STRIPE_SECRET_KEY: z.string().optional(),
   STRIPE_WEBHOOK_SECRET: z.string().optional(),
+
+  // Calendar integrations (OAuth). All optional: when a provider's client
+  // credentials are absent the integration is simply reported as unavailable.
+  GOOGLE_OAUTH_CLIENT_ID: z.string().optional(),
+  GOOGLE_OAUTH_CLIENT_SECRET: z.string().optional(),
+  MICROSOFT_OAUTH_CLIENT_ID: z.string().optional(),
+  MICROSOFT_OAUTH_CLIENT_SECRET: z.string().optional(),
+  // Microsoft tenant: "common" allows work/school + personal accounts.
+  MICROSOFT_OAUTH_TENANT: z.string().default('common'),
 });
 
 const parsed = envSchema.safeParse(process.env);
