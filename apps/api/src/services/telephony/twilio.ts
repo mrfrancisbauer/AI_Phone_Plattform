@@ -9,6 +9,7 @@ import { config } from '../../config.js';
 import { logger } from '../../logger.js';
 import {
   configureNumberWebhook,
+  statusWebhookUrl,
   twilioConfigured,
   voiceWebhookUrl,
 } from '../twilio-provisioning.js';
@@ -67,6 +68,8 @@ export class TwilioAdapter implements TelephonyPort {
       PhoneNumber: e164,
       VoiceUrl: voiceWebhookUrl(),
       VoiceMethod: 'POST',
+      StatusCallback: statusWebhookUrl(),
+      StatusCallbackMethod: 'POST',
     });
     const res = await fetch(
       `${TWILIO_API}/Accounts/${config.TWILIO_ACCOUNT_SID}/IncomingPhoneNumbers.json`,

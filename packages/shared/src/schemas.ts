@@ -206,6 +206,13 @@ export const twilioVoiceWebhookSchema = z.object({
   Digits: z.string().optional(),
 });
 
+// Twilio call status callback (fires when the call ends, incl. caller hang-ups).
+export const twilioStatusWebhookSchema = z.object({
+  CallSid: z.string().min(1),
+  CallStatus: z.string().min(1),
+  CallDuration: z.string().optional(),
+});
+
 export const leadCategorySchema = z.enum(LEAD_CATEGORIES);
 
 // --- User management ---

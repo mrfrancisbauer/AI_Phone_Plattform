@@ -7,15 +7,18 @@
  *   POST /webhooks/twilio/gather?callId=  each caller utterance → next prompt
  */
 import type { FastifyInstance } from 'fastify';
-import { twilioVoiceWebhookSchema } from '@ai-phone/shared';
+import { twilioStatusWebhookSchema, twilioVoiceWebhookSchema } from '@ai-phone/shared';
 import { config } from '../config.js';
 import { prisma } from '../db.js';
 import { blindHash, encrypt } from '../lib/crypto.js';
+import { classifyEndOfCall, parseCallDuration } from '../lib/call-lifecycle.js';
 import { classifyInbound, inboundLogLevel } from '../lib/phone-routing.js';
 import { validateTwilioSignature, twimlGather, twimlHangup } from '../lib/twilio.js';
 import { defaultTwilioVoice, resolveTwilioVoice } from '../lib/voice.js';
 import { logger } from '../logger.js';
 import { handleTurn } from '../services/conversation.service.js';
+import { recordUsage } from '../services/cost.service.js';
+import { finalizeCall } from '../services/summary.service.js';
 import { audit } from '../lib/audit.js';
 
 export async function webhookRoutes(app: FastifyInstance) {
@@ -108,9 +111,11 @@ export async function webhookRoutes(app: FastifyInstance) {
 
     const greeting = `${assistant.greetingText} ${assistant.consentText}`;
     const action = `${config.API_PUBLIC_URL}/webhooks/twilio/gather?callId=${call.id}`;
+    const ttsVoice = resolveTwilioVoice(assistant.voice, assistant.locale);
+    logger.info({ callId: call.id, persona: assistant.voice, ttsVoice }, 'inbound call: resolved TTS voice');
     return twiml(reply, twimlGather(greeting, action, {
       language: localeToTwilio(assistant.locale),
-      voice: resolveTwilioVoice(assistant.voice, assistant.locale),
+      voice: ttsVoice,
     }));
   });
 
@@ -145,6 +150,86 @@ export async function webhookRoutes(app: FastifyInstance) {
       return twiml(reply, twimlHangup(result.say, { language, voice }));
     }
     return twiml(reply, twimlGather(result.say, action, { language, voice }));
+  });
+
+  // --- Call ended (status callback) ---
+  // Fires for every call end, including caller hang-ups that never reach the
+  // regular goodbye. Without this, abandoned calls stayed in consent_pending/
+  // in_progress forever with no duration, no cost and no summary.
+  app.post('/webhooks/twilio/status', async (req, reply) => {
+    if (!verify(req)) return reply.status(403).send('invalid signature');
+
+    const parsed = twilioStatusWebhookSchema.safeParse(req.body);
+    if (!parsed.success) return reply.status(400).send('bad request');
+    const { CallSid, CallStatus, CallDuration } = parsed.data;
+
+    const call = await prisma.call.findUnique({
+      where: { providerCallId: CallSid },
+      include: { _count: { select: { answers: true } }, usageEvent: { select: { id: true } } },
+    });
+    if (!call) return reply.status(200).send('ok'); // unknown call — nothing to do
+
+    const action = classifyEndOfCall({
+      twilioStatus: CallStatus,
+      callStatus: call.status,
+      consentGiven: call.consentGiven,
+      answerCount: call._count.answers,
+    });
+    const duration = parseCallDuration(CallDuration);
+    logger.info({ callId: call.id, twilioStatus: CallStatus, action, duration }, 'call status callback');
+
+    try {
+      switch (action) {
+        case 'finalize': {
+          // Caller consented + answered, then hung up: persist the authoritative
+          // duration, then run the full finalization on what we have.
+          if (duration !== null) {
+            await prisma.call.update({ where: { id: call.id }, data: { durationSeconds: duration } });
+          }
+          await finalizeCall(call.id);
+          break;
+        }
+        case 'abandon': {
+          // Hung up before consent / without answers: close the call and record
+          // per-minute costs only (no consent ⇒ no LLM processing).
+          const seconds = duration ?? Math.max(1, Math.round((Date.now() - call.startedAt.getTime()) / 1000));
+          await prisma.call.update({
+            where: { id: call.id },
+            data: { status: 'failed', endedAt: new Date(), durationSeconds: seconds },
+          });
+          await recordUsage({
+            tenantId: call.tenantId,
+            callId: call.id,
+            usage: { durationSeconds: seconds, llmInputTokens: 0, llmOutputTokens: 0 },
+          });
+          break;
+        }
+        case 'backfill': {
+          // Call ended regularly, but the callback carries the authoritative
+          // duration; declined calls also get their usage recorded here.
+          if (duration !== null && call.durationSeconds === 0) {
+            await prisma.call.update({ where: { id: call.id }, data: { durationSeconds: duration } });
+          }
+          if (!call.usageEvent) {
+            const seconds = duration ?? call.durationSeconds;
+            if (seconds > 0) {
+              await recordUsage({
+                tenantId: call.tenantId,
+                callId: call.id,
+                usage: { durationSeconds: seconds, llmInputTokens: 0, llmOutputTokens: 0 },
+              });
+            }
+          }
+          break;
+        }
+        case 'ignore':
+          break;
+      }
+    } catch (err) {
+      // Never bounce the callback — Twilio would retry and we log the cause.
+      logger.error({ err, callId: call.id, action }, 'status-callback processing failed');
+    }
+    return reply.status(200).send('ok');
   });
 }
 

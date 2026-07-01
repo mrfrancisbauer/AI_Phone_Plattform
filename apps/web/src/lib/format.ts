@@ -27,3 +27,17 @@ export function leadColor(category: string | null): string {
       return '#bbb';
   }
 }
+
+/** German label for a call status (raw enum values are not customer language). */
+export function callStatusLabel(status: string): string {
+  switch (status) {
+    case 'ringing': return 'Klingelt';
+    case 'consent_pending': return 'Aufgelegt (Begrüßung)';
+    case 'in_progress': return 'Laufend';
+    case 'summarizing': return 'Wird ausgewertet';
+    case 'completed': return 'Abgeschlossen';
+    case 'declined': return 'Abgelehnt';
+    case 'failed': return 'Abgebrochen';
+    default: return status;
+  }
+}

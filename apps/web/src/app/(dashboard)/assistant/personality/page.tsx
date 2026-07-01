@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { useAssistant, type Assistant } from '@/lib/useAssistant';
 import { HeroHead, Field, SettingCard } from '@/components/app';
@@ -13,6 +13,14 @@ export default function PersonalityPage() {
   const [msg, setMsg] = useState('');
   const [saveError, setSaveError] = useState('');
 
+  // System voices load asynchronously in most browsers — request them once so
+  // they are ready by the time the user clicks the preview button.
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      window.speechSynthesis.getVoices();
+    }
+  }, []);
+
   if (loading) return <Spinner />;
   if (error) return <Alert kind="error">{error}</Alert>;
   if (!assistant) return <Alert kind="info">Noch kein Assistent vorhanden. Bitte richten Sie zuerst Ihren Assistenten ein.</Alert>;
@@ -24,10 +32,32 @@ export default function PersonalityPage() {
     setMsg('');
   }
 
+  // Browser preview: system voices can't match the real neural phone voices,
+  // but each persona must at least sound DIFFERENT here — so pick a distinct
+  // locale-matching system voice per persona and shade it with pitch/rate.
+  // Previously every persona used the same default voice, which made the
+  // selector feel broken.
   function preview() {
     if (typeof window === 'undefined' || !window.speechSynthesis) return;
     const u = new SpeechSynthesisUtterance(assistant!.greetingText || 'Guten Tag, wie kann ich Ihnen helfen?');
-    u.lang = assistant!.locale === 'en' ? 'en-US' : 'de-DE';
+    const lang = assistant!.locale === 'en' ? 'en' : 'de';
+    u.lang = lang === 'en' ? 'en-US' : 'de-DE';
+
+    const personaIndex = Math.max(0, VOICE_PERSONAS.findIndex((p) => p.voiceId === assistant!.voice));
+    const matching = window.speechSynthesis.getVoices().filter((v) => v.lang.toLowerCase().startsWith(lang));
+    if (matching.length > 0) u.voice = matching[personaIndex % matching.length]!;
+
+    const tuning: Record<string, { pitch: number; rate: number }> = {
+      anna: { pitch: 1.0, rate: 1.0 },
+      david: { pitch: 0.75, rate: 0.95 },
+      lisa: { pitch: 1.2, rate: 1.08 },
+      julia: { pitch: 1.05, rate: 0.9 },
+      alex: { pitch: 0.9, rate: 1.0 },
+    };
+    const t = tuning[VOICE_PERSONAS[personaIndex]?.id ?? 'anna'] ?? { pitch: 1, rate: 1 };
+    u.pitch = t.pitch;
+    u.rate = t.rate;
+
     window.speechSynthesis.cancel();
     window.speechSynthesis.speak(u);
   }
