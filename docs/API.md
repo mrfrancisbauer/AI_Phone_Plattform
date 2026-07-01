@@ -86,9 +86,22 @@ inbound call. Numbers without a `displayNumber` are dialed directly.
 | GET | `/api/phone-numbers/webhook-info` | tenant:read — legacy: webhook URL + whether Twilio creds are set |
 | GET | `/api/phone-numbers/available?country=DE&areaCode=&contains=` | tenant:read — purchasable DIDs from the active provider (empty if none) |
 | POST | `/api/phone-numbers` | tenant:write — `{ provider, e164, displayNumber?, mode?, assistantId?, active }` |
+| POST | `/api/phone-numbers/keep-number` | tenant:write — `{ displayNumber, assistantId? }`; auto-assigns a routing DID from the pool and returns `{ id, routingNumber }` |
 | POST | `/api/phone-numbers/purchase` | tenant:write — `{ e164, assistantId? }` buys a DID from the active provider |
 | POST | `/api/phone-numbers/:id/configure-webhook` | tenant:write — points the Twilio number's voice webhook at the platform |
-| DELETE | `/api/phone-numbers/:id` | tenant:write |
+| DELETE | `/api/phone-numbers/:id` | tenant:write — releases a pooled routing DID back to the pool |
+
+### Routing-number pool (super admin)
+
+The operator pre-fills a pool of platform-owned routing DIDs; `keep-number`
+claims from it automatically. See `docs/TELEPHONY.md` for the cost/responsibility model.
+
+| Method | Path | Capability |
+|--------|------|-----------|
+| GET | `/api/admin/routing-numbers` | providers:read — pool with status + assignment |
+| GET | `/api/admin/routing-numbers/available?country=DE` | providers:read — provider inventory to buy |
+| POST | `/api/admin/routing-numbers` | providers:write — `{ e164, provider?, country?, purchase? }` (purchase=true buys it first) |
+| DELETE | `/api/admin/routing-numbers/:id` | providers:write — only when unassigned |
 
 ## Calls
 

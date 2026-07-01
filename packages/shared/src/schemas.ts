@@ -102,6 +102,22 @@ export const purchaseNumberSchema = z.object({
   assistantId: z.string().uuid().nullable().optional(),
 });
 
+// "Keep your number": the customer supplies only their own number; the platform
+// auto-assigns a routing DID from the pool. No routing number is typed by hand.
+export const keepNumberSchema = z.object({
+  displayNumber: e164Schema,
+  assistantId: z.string().uuid().nullable().optional(),
+});
+
+// Add a DID to the platform routing-number pool (super admin).
+export const addRoutingNumberSchema = z.object({
+  e164: e164Schema,
+  provider: z.enum(TELEPHONY_PROVIDERS).default('twilio'),
+  country: z.string().length(2).default('DE'),
+  // true = buy it from the provider first; false = register an already-owned DID.
+  purchase: z.boolean().default(false),
+});
+
 // --- Questionnaire ---
 export const questionConditionSchema = z.object({
   questionKey: z.string().min(1),

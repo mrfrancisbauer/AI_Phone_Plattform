@@ -16,7 +16,7 @@ interface Props {
   onCreated: () => void;
 }
 
-type Mode = 'choose' | 'carrier' | 'forward-setup' | 'purchase' | 'sip';
+type Mode = 'choose' | 'carrier' | 'forward-setup' | 'forward-done' | 'purchase' | 'sip';
 interface AvailableNumber { e164: string; friendlyName?: string }
 
 function normalize(n: string) {
@@ -52,10 +52,11 @@ export function NumberWizard({ assistants, webhookUrl, canProvision, onClose, on
   const [mode, setMode] = useState<Mode>('choose');
   const [carrier, setCarrier] = useState('Telekom');
   const [ownNumber, setOwnNumber] = useState('');
-  const [target, setTarget] = useState('');
   const [assistantId, setAssistantId] = useState(assistants.length === 1 ? assistants[0]!.id : '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  // The routing number the platform auto-assigned (shown after "keep number").
+  const [routingNumber, setRoutingNumber] = useState('');
   // Purchase path.
   const [results, setResults] = useState<AvailableNumber[]>([]);
   const [searched, setSearched] = useState(false);
@@ -72,37 +73,26 @@ export function NumberWizard({ assistants, webhookUrl, canProvision, onClose, on
     return true;
   }
 
-  // "Keep your number": store the customer's own number as display metadata and
-  // the platform routing DID as the number inbound calls actually land on.
+  // "Keep your number": the customer supplies only their own number; the
+  // platform auto-assigns a routing DID from the pool and returns it so we can
+  // show exactly where to forward. No routing number is typed by hand.
   async function saveForward() {
     setError('');
     const own = normalize(ownNumber);
-    const did = normalize(target);
     if (!isE164(own)) {
       setError('Bitte Ihre Rufnummer im Format +49… (mit Ländervorwahl, ohne Leerzeichen) angeben.');
-      return;
-    }
-    if (!isE164(did)) {
-      setError('Bitte die Weiterleitungs-Zielnummer im Format +49… angeben.');
       return;
     }
     if (!assistantOk()) return;
     setBusy(true);
     try {
-      // When the platform can manage DIDs via API the target sits on our Twilio
-      // account (webhook auto-wired); otherwise it is a manually managed DID.
-      await api('/api/phone-numbers', {
+      const res = await api<{ routingNumber: string }>('/api/phone-numbers/keep-number', {
         method: 'POST',
-        body: JSON.stringify({
-          provider: canProvision ? 'twilio' : 'sip',
-          e164: did,
-          displayNumber: own,
-          mode: 'forward',
-          active: true,
-          assistantId: assistantId || undefined,
-        }),
+        body: JSON.stringify({ displayNumber: own, assistantId: assistantId || undefined }),
       });
-      onCreated();
+      setRoutingNumber(res.routingNumber);
+      setMode('forward-done');
+      setBusy(false);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Fehler');
       setBusy(false);
@@ -201,8 +191,8 @@ export function NumberWizard({ assistants, webhookUrl, canProvision, onClose, on
           <div>
             <h3 style={{ marginTop: 0 }}>So behalten Sie Ihre {carrier}-Nummer</h3>
             <p className="muted" style={{ marginTop: 0 }}>
-              Sie behalten Ihre Rufnummer und Ihren Vertrag. Eingehende Anrufe werden auf eine
-              Plattform-Zielnummer weitergeleitet — dort nimmt Ihr Assistent ab.
+              Sie behalten Ihre Rufnummer und Ihren Vertrag. Wir stellen Ihnen automatisch eine
+              Weiterleitungsnummer bereit — dort nimmt Ihr Assistent ab.
             </p>
 
             <div className="guide-step">
@@ -218,38 +208,55 @@ export function NumberWizard({ assistants, webhookUrl, canProvision, onClose, on
             <div className="guide-step">
               <span className="guide-num">2</span>
               <div style={{ flex: 1 }}>
-                <strong>Weiterleitungs-Zielnummer</strong>
-                <p className="muted" style={{ margin: '2px 0 6px' }}>
-                  Die Plattform-Rufnummer, auf die Sie weiterleiten (erhalten Sie von uns bzw. Ihrem Betreuer).
-                </p>
-                <input placeholder="+49 …" value={target} onChange={(e) => setTarget(e.target.value)} />
-              </div>
-            </div>
-
-            <div className="guide-step">
-              <span className="guide-num">3</span>
-              <div style={{ flex: 1 }}>
-                <strong>Weiterleitung bei {carrier} einrichten</strong>
-                <p className="muted" style={{ margin: '2px 0 0' }}>{forwardingHint(carrier)}</p>
-              </div>
-            </div>
-
-            <div className="guide-step">
-              <span className="guide-num">4</span>
-              <div style={{ flex: 1 }}>
                 <strong>Assistent zuordnen</strong>
                 <AssistantSelect />
               </div>
             </div>
 
             <Alert kind="info">
-              Nach dem Speichern gilt die Nummer als „Warte auf ersten Anruf". Sobald ein
-              weitergeleiteter Anruf eingeht, wird die Weiterleitung automatisch als aktiv bestätigt.
+              Im nächsten Schritt erhalten Sie Ihre persönliche Weiterleitungsnummer und eine
+              Anleitung für {carrier}.
             </Alert>
 
             <div className="row between" style={{ marginTop: 18 }}>
               <button className="btn secondary" onClick={() => setMode('carrier')}>Zurück</button>
-              <button className="btn" disabled={busy || assistants.length === 0} onClick={saveForward}>{busy ? 'Speichern…' : 'Nummer verbinden'}</button>
+              <button className="btn" disabled={busy || assistants.length === 0} onClick={saveForward}>{busy ? 'Wird bereitgestellt…' : 'Weiterleitungsnummer erhalten'}</button>
+            </div>
+          </div>
+        )}
+
+        {mode === 'forward-done' && (
+          <div>
+            <h3 style={{ marginTop: 0 }}>Fast fertig — jetzt Weiterleitung einrichten</h3>
+            <p className="muted" style={{ marginTop: 0 }}>
+              Ihre Rufnummer <strong>{normalize(ownNumber)}</strong> ist verbunden. Leiten Sie
+              eingehende Anrufe bei {carrier} auf diese Nummer weiter:
+            </p>
+
+            <div className="guide-step">
+              <span className="guide-num">1</span>
+              <div style={{ flex: 1 }}>
+                <strong>Weiterleitungs-Zielnummer</strong>
+                <div style={{ marginTop: 6 }}><CopyField value={routingNumber} /></div>
+              </div>
+            </div>
+
+            <div className="guide-step">
+              <span className="guide-num">2</span>
+              <div style={{ flex: 1 }}>
+                <strong>Weiterleitung bei {carrier} aktivieren</strong>
+                <p className="muted" style={{ margin: '2px 0 0' }}>{forwardingHint(carrier)}</p>
+              </div>
+            </div>
+
+            <Alert kind="info">
+              Die Nummer steht zunächst auf „Warte auf ersten Anruf". Sobald ein weitergeleiteter
+              Anruf eingeht, wird die Weiterleitung automatisch als aktiv bestätigt.
+            </Alert>
+
+            <div className="row between" style={{ marginTop: 18 }}>
+              <span />
+              <button className="btn" onClick={onCreated}>Fertig</button>
             </div>
           </div>
         )}

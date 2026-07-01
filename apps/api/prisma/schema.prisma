@@ -473,6 +473,34 @@ model Backup {
   @@map("backups")
 }
 
+// Platform-owned pool of routing DIDs for the "keep your number" flow. The
+// operator pre-provisions numbers here (bought via a provider API or by hand);
+// when a tenant keeps their own number, one AVAILABLE routing number is claimed
+// automatically and bound to a tenant PhoneNumber — so the customer never has
+// to type a routing number given out by support. This is a platform-level table
+// (not tenant-scoped): a routing number belongs to the platform until assigned.
+model RoutingNumber {
+  id                    String            @id @default(uuid())
+  provider              TelephonyProvider @default(twilio)
+  // The platform-owned DID, encrypted, with a deterministic lookup hash so the
+  // same number can't be added to the pool twice.
+  e164Enc               String
+  e164Hash              String            @unique
+  country               String            @default("DE")
+  // available → claimable; assigned → bound to a tenant PhoneNumber.
+  status                String            @default("available")
+  // Whether the DID's inbound voice webhook is wired to the platform.
+  webhookConfigured     Boolean           @default(false)
+  // Set when status = assigned. Not a FK (no cascade): released on delete.
+  assignedTenantId      String?
+  assignedPhoneNumberId String?           @unique
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+
+  @@index([status])
+  @@map("routing_numbers")
+}
+
 // Lightweight application event log surfaced in the admin "Logs" view. Audit of
 // admin actions continues to use the existing audit_logs table.
 model AppLog {

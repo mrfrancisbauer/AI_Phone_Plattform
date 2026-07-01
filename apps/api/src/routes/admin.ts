@@ -7,20 +7,23 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import {
   PLATFORM_CAPS,
   ROLES,
+  addRoutingNumberSchema,
   adminListQuerySchema,
   platformAiSettingsSchema,
   promptVersionSchema,
   providerTestSchema,
+  searchNumbersSchema,
   updateUserRoleSchema,
   type Role,
 } from '@ai-phone/shared';
 import { z } from 'zod';
 import { config } from '../config.js';
 import { prisma } from '../db.js';
-import { decrypt, tryDecrypt } from '../lib/crypto.js';
+import { blindHash, decrypt, encrypt, tryDecrypt } from '../lib/crypto.js';
 import { hashPassword, signMagicLink } from '../lib/auth.js';
 import { audit } from '../lib/audit.js';
-import { badRequest, notFound } from '../lib/errors.js';
+import { badRequest, conflict, notFound } from '../lib/errors.js';
+import { getTelephony, provisioningProvider } from '../services/telephony/index.js';
 import { logger } from '../logger.js';
 import {
   DEFAULT_AI_SETTINGS,
@@ -176,6 +179,92 @@ export async function adminRoutes(app: FastifyInstance) {
     const result = await configureNumberWebhook(decrypt(number.e164Enc));
     await adminAudit(req, 'phone_number.configure_webhook', { id });
     return result;
+  });
+
+  // ---- Routing-number pool ------------------------------------------------
+  // Platform-owned DIDs that tenants keeping their own number forward TO. The
+  // operator fills the pool; the tenant flow claims from it automatically.
+  app.get('/admin/routing-numbers', cap(PLATFORM_CAPS.PROVIDERS_READ), async () => {
+    const rows = await prisma.routingNumber.findMany({ orderBy: { createdAt: 'desc' } });
+    const tenantIds = [...new Set(rows.map((r) => r.assignedTenantId).filter(Boolean))] as string[];
+    const tenants = tenantIds.length
+      ? await prisma.tenant.findMany({ where: { id: { in: tenantIds } }, select: { id: true, name: true } })
+      : [];
+    const nameById = new Map(tenants.map((t) => [t.id, t.name]));
+    const prov = provisioningProvider();
+    return {
+      canProvision: prov !== null,
+      provisioningProvider: prov,
+      voiceWebhookUrl: voiceWebhookUrl(),
+      available: rows.filter((r) => r.status === 'available').length,
+      items: rows.map((r) => ({
+        id: r.id,
+        e164: tryDecrypt(r.e164Enc) ?? '—',
+        provider: r.provider,
+        country: r.country,
+        status: r.status,
+        webhookConfigured: r.webhookConfigured,
+        assignedTenantId: r.assignedTenantId,
+        assignedTenantName: r.assignedTenantId ? nameById.get(r.assignedTenantId) ?? null : null,
+      })),
+    };
+  });
+
+  // Search the active provider's inventory (for the "buy & add to pool" flow).
+  app.get('/admin/routing-numbers/available', cap(PLATFORM_CAPS.PROVIDERS_READ), async (req) => {
+    const q = searchNumbersSchema.parse(req.query);
+    const prov = provisioningProvider();
+    if (!prov) return { provider: null, numbers: [] };
+    const numbers = await getTelephony(prov).searchNumbers({ ...q, limit: 20 });
+    return { provider: prov, numbers };
+  });
+
+  app.post('/admin/routing-numbers', cap(PLATFORM_CAPS.PROVIDERS_WRITE), async (req, reply) => {
+    const body = addRoutingNumberSchema.parse(req.body);
+    const hash = blindHash(body.e164);
+    const existing = await prisma.routingNumber.findUnique({ where: { e164Hash: hash } });
+    if (existing) throw conflict('Diese Nummer ist bereits im Pool.');
+
+    const port = getTelephony(body.provider);
+    let webhookConfigured = false;
+    if (body.purchase) {
+      if (!port.canProvision()) throw badRequest('Automatischer Kauf ist für diesen Provider nicht verfügbar.');
+      await port.buyNumber(body.e164); // buys + wires the voice webhook
+      webhookConfigured = true;
+    } else {
+      // Already-owned DID: best-effort wire the webhook (manual providers no-op).
+      try {
+        await port.setInboundWebhook(body.e164);
+        webhookConfigured = port.configured() && body.provider === 'twilio';
+      } catch (err) {
+        logger.warn({ err }, 'routing-number webhook wiring failed (manual follow-up needed)');
+      }
+    }
+
+    const created = await prisma.routingNumber.create({
+      data: {
+        provider: body.provider,
+        e164Enc: encrypt(body.e164),
+        e164Hash: hash,
+        country: body.country,
+        status: 'available',
+        webhookConfigured,
+      },
+    });
+    await adminAudit(req, 'routing_number.add', { id: created.id, purchase: body.purchase });
+    return reply.status(201).send({ id: created.id, webhookConfigured });
+  });
+
+  app.delete('/admin/routing-numbers/:id', cap(PLATFORM_CAPS.PROVIDERS_WRITE), async (req, reply) => {
+    const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+    const row = await prisma.routingNumber.findUnique({ where: { id } });
+    if (!row) throw notFound('Routing number not found');
+    if (row.status === 'assigned') {
+      throw badRequest('Diese Nummer ist einem Mandanten zugewiesen und kann nicht entfernt werden.');
+    }
+    await prisma.routingNumber.delete({ where: { id } });
+    await adminAudit(req, 'routing_number.remove', { id });
+    return reply.status(204).send();
   });
 
   // ---- Providers ----------------------------------------------------------
