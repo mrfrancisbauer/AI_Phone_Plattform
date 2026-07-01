@@ -67,6 +67,7 @@ export async function dashboardKpis() {
     usageMonth,
     dbOk,
     activeTenantsForMrr,
+    routingPoolAvailable,
   ] = await Promise.all([
     prisma.tenant.count(),
     prisma.tenant.count({ where: { paused: false } }),
@@ -80,6 +81,7 @@ export async function dashboardKpis() {
     }),
     checkDb(),
     prisma.tenant.findMany({ where: { paused: false }, select: { plan: true } }),
+    prisma.routingNumber.count({ where: { status: 'available' } }),
   ]);
 
   const mrr = activeTenantsForMrr.reduce((sum, t) => sum + (PLAN_PRICING[t.plan as Plan] ?? 0), 0);
@@ -99,6 +101,7 @@ export async function dashboardKpis() {
     profit: num(usageMonth._sum.platformMarkup),
     mrr,
     arr: mrr * 12,
+    routingPoolAvailable,
     apiStatus: 'ok' as const,
     dbStatus: dbOk ? ('ok' as const) : ('down' as const),
   };
