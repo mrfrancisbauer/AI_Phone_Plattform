@@ -12,13 +12,14 @@
 import type { FastifyInstance } from 'fastify';
 import {
   createPhoneNumberSchema,
+  keepNumberSchema,
   purchaseNumberSchema,
   searchNumbersSchema,
 } from '@ai-phone/shared';
 import { z } from 'zod';
 import { prisma } from '../db.js';
 import { blindHash, encrypt, tryDecrypt } from '../lib/crypto.js';
-import { badRequest, conflict, notFound } from '../lib/errors.js';
+import { HttpError, badRequest, conflict, notFound } from '../lib/errors.js';
 import { initialForwardingStatus, resolveAssistantForNumber } from '../lib/phone-routing.js';
 import { audit } from '../lib/audit.js';
 import { logger } from '../logger.js';
@@ -27,6 +28,12 @@ import {
   provisioningProvider,
   voiceWebhookUrl,
 } from '../services/telephony/index.js';
+import {
+  acquireRoutingNumber,
+  linkRoutingNumber,
+  releaseByPhoneNumber,
+  releaseClaim,
+} from '../services/routing-pool.service.js';
 
 export async function phoneNumberRoutes(app: FastifyInstance) {
   app.addHook('preHandler', app.authenticate);
@@ -95,6 +102,53 @@ export async function phoneNumberRoutes(app: FastifyInstance) {
 
     await audit({ tenantId, actorId: req.auth!.userId, action: 'phone_number.create', targetId: created.id, metadata: { assistantId: resolved.assistantId, mode: body.mode ?? null } });
     return reply.status(201).send({ id: created.id, assistantId: resolved.assistantId, webhookConfigured });
+  });
+
+  // "Keep your number": the customer supplies only their own number and the
+  // platform auto-assigns a routing DID from the pool (or provisions one). No
+  // routing number is handed out by support / typed by hand.
+  app.post('/phone-numbers/keep-number', { preHandler: [app.requireCapability('tenant:write')] }, async (req, reply) => {
+    const body = keepNumberSchema.parse(req.body);
+    const tenantId = req.auth!.tenantId;
+
+    const assistants = await prisma.assistant.findMany({
+      where: { tenantId },
+      select: { id: true, name: true },
+    });
+    const resolved = resolveAssistantForNumber(assistants, body.assistantId);
+    if (!resolved.ok) throw badRequest(resolved.message);
+
+    const tenant = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { country: true } });
+    const routing = await acquireRoutingNumber(tenant?.country ?? 'DE');
+    if (!routing) {
+      throw new HttpError(
+        409,
+        'Derzeit ist keine Weiterleitungsnummer verfügbar. Bitte kontaktieren Sie den Support.',
+        'no_routing_number',
+      );
+    }
+
+    try {
+      const created = await prisma.phoneNumber.create({
+        data: {
+          tenantId,
+          provider: routing.provider,
+          e164Enc: encrypt(routing.e164),
+          e164Hash: blindHash(routing.e164),
+          displayNumberEnc: encrypt(body.displayNumber),
+          forwardingStatus: 'pending',
+          assistantId: resolved.assistantId,
+          active: true,
+        },
+      });
+      await linkRoutingNumber(routing.routingNumberId, tenantId, created.id);
+      await audit({ tenantId, actorId: req.auth!.userId, action: 'phone_number.keep_number', targetId: created.id, metadata: { assistantId: resolved.assistantId } });
+      return reply.status(201).send({ id: created.id, routingNumber: routing.e164, assistantId: resolved.assistantId });
+    } catch (err) {
+      // Roll the claimed routing number back into the pool on any failure.
+      await releaseClaim(routing.routingNumberId);
+      throw err;
+    }
   });
 
   // Reassign a number to a different assistant of the same tenant.
@@ -208,6 +262,8 @@ export async function phoneNumberRoutes(app: FastifyInstance) {
     const tenantId = req.auth!.tenantId;
     const existing = await prisma.phoneNumber.findFirst({ where: { id, tenantId } });
     if (!existing) throw notFound('Phone number not found');
+    // If this number used a pooled routing DID, return it to the pool for reuse.
+    await releaseByPhoneNumber(id);
     await prisma.phoneNumber.delete({ where: { id } });
     await audit({ tenantId, actorId: req.auth!.userId, action: 'phone_number.delete', targetId: id });
     return reply.status(204).send();
