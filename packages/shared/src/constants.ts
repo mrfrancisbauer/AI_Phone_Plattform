@@ -155,3 +155,60 @@ export type RetentionDays = (typeof RETENTION_DAYS)[number];
 /** The canonical sentence the assistant must use when it is unsure. */
 export const UNCERTAIN_RESPONSE_DE =
   'Das kann ich nicht zuverlässig beantworten, ich gebe es an das Team weiter.';
+
+/**
+ * Customer-facing voice personas. The technical voice id (OpenAI/ElevenLabs)
+ * stays internal — the customer only ever picks a friendly persona. Stored as
+ * `assistant.voice` = the persona's `voiceId`.
+ */
+export interface VoicePersona {
+  id: string;
+  name: string;
+  gender: 'weiblich' | 'männlich' | 'neutral';
+  style: string;
+  description: string;
+  /** Internal TTS voice id (never shown to the customer). */
+  voiceId: string;
+}
+
+export const VOICE_PERSONAS: VoicePersona[] = [
+  { id: 'anna', name: 'Business Anna', gender: 'weiblich', style: 'Professionell · Ruhig', description: 'Klar und vertrauensvoll — ideal für Kanzleien und Praxen.', voiceId: 'nova' },
+  { id: 'david', name: 'Business David', gender: 'männlich', style: 'Professionell · Souverän', description: 'Sachlich und souverän — passt zu Dienstleistern und B2B.', voiceId: 'onyx' },
+  { id: 'lisa', name: 'Freundliche Lisa', gender: 'weiblich', style: 'Modern · Locker', description: 'Warm und zugänglich — für einen freundlichen Empfang.', voiceId: 'shimmer' },
+  { id: 'julia', name: 'Premium Julia', gender: 'weiblich', style: 'Elegant · Hochwertig', description: 'Gehoben und elegant — für Premium-Marken.', voiceId: 'fable' },
+  { id: 'alex', name: 'Neutral Alex', gender: 'neutral', style: 'Neutral · Ausgewogen', description: 'Ausgewogen und universell einsetzbar.', voiceId: 'alloy' },
+];
+
+export function personaByVoiceId(voiceId: string | null | undefined): VoicePersona {
+  return VOICE_PERSONAS.find((p) => p.voiceId === voiceId) ?? VOICE_PERSONAS[0]!;
+}
+
+/** Assistant tasks offered in the setup wizard. */
+export interface AssistantTask {
+  id: string;
+  label: string;
+  description: string;
+}
+
+export const ASSISTANT_TASKS: AssistantTask[] = [
+  { id: 'reception', label: 'Rezeption', description: 'Anrufer freundlich empfangen und weiterleiten.' },
+  { id: 'support', label: 'Support', description: 'Häufige Fragen beantworten und Anliegen aufnehmen.' },
+  { id: 'appointments', label: 'Terminvereinbarung', description: 'Termine erfassen und Rückrufe organisieren.' },
+  { id: 'leads', label: 'Leads', description: 'Neue Interessenten qualifizieren und erfassen.' },
+  { id: 'reservations', label: 'Reservierungen', description: 'Tisch-/Platzreservierungen entgegennehmen.' },
+  { id: 'orders', label: 'Bestellungen', description: 'Bestellungen und Rückrufwünsche aufnehmen.' },
+];
+
+/** SIP/PBX providers offered when connecting an existing number. */
+export const TELEPHONY_CARRIERS = [
+  'Telekom',
+  'Vodafone',
+  'O2',
+  'Sipgate',
+  'Placetel',
+  'STARFACE',
+  '3CX',
+  'NFON',
+  'Microsoft Teams',
+  'Sonstige',
+] as const;

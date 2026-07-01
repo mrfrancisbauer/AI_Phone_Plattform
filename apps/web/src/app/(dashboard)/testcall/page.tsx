@@ -67,7 +67,7 @@ export default function SimulatorPage() {
 
   return (
     <>
-      <h1>Testmodus / Gesprächssimulation</h1>
+      <h1>Testanruf</h1>
       <p className="muted">
         Testen Sie den Assistenten und den Fragebogen, bevor Sie live gehen — ohne echten Anruf.
       </p>
