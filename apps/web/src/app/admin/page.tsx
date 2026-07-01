@@ -1,15 +1,19 @@
 'use client';
 
+import Link from 'next/link';
 import { useApi } from '@/lib/useApi';
 import { money, duration } from '@/lib/format';
-import { Bars, Card, Donut, PageHeader, Spinner, StatCard, StatusDot } from '@/components/admin/ui';
+import { Alert, Bars, Card, Donut, PageHeader, Spinner, StatCard, StatusDot } from '@/components/admin/ui';
+
+/** Warn the operator to top up the routing-number pool at/below this count. */
+const ROUTING_POOL_LOW = 3;
 
 interface DashboardData {
   kpis: {
     tenantsTotal: number; tenantsActive: number; activeNumbers: number;
     callsToday: number; callsMonth: number; minutesMonth: number;
     openaiCost: number; telephonyCost: number; platformRevenue: number; profit: number;
-    mrr: number; arr: number; apiStatus: string; dbStatus: string;
+    mrr: number; arr: number; routingPoolAvailable: number; apiStatus: string; dbStatus: string;
   };
   charts: {
     callsPerDay: { date: string; value: number }[];
@@ -31,6 +35,15 @@ export default function AdminDashboard() {
   return (
     <>
       <PageHeader title="Plattform-Dashboard" subtitle="Überblick über alle Mandanten" />
+
+      {k.routingPoolAvailable <= ROUTING_POOL_LOW && (
+        <Alert kind={k.routingPoolAvailable === 0 ? 'error' : 'warning'}>
+          {k.routingPoolAvailable === 0
+            ? 'Der Weiterleitungs-Pool ist leer — neue Kunden können ihre Nummer nicht behalten. '
+            : `Der Weiterleitungs-Pool ist fast leer (${k.routingPoolAvailable} verfügbar). `}
+          <Link href="/admin/phone-numbers">Nummern zum Pool hinzufügen →</Link>
+        </Alert>
+      )}
 
       <div className="ac-grid k4">
         <StatCard label="Mandanten" value={k.tenantsTotal} hint={`${k.tenantsActive} aktiv`} />
