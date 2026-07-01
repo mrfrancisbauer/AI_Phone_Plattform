@@ -57,3 +57,6 @@ next step:
 
 This is a deliberate architectural project (a persistent WebSocket media server,
 barge-in handling, dialogue logic in the LLM), not a config change.
+
+**→ Der konkrete Umsetzungsplan (Architektur-Entscheidung, Meilensteine,
+Kostenmodell, Risiken) steht in [`docs/VOICE_PHASE2.md`](./VOICE_PHASE2.md).**
