@@ -53,10 +53,17 @@ export default function SettingsPage() {
   async function addNumber() {
     if (!newNumber) return;
     setError('');
+    // Normalize to E.164: keep the leading + and digits only (strip spaces,
+    // dashes, parentheses etc. the user may have typed).
+    const e164 = newNumber.replace(/[^\d+]/g, '');
+    if (!/^\+[1-9]\d{6,14}$/.test(e164)) {
+      setError('Bitte die Nummer im Format +49… (mit Ländervorwahl, ohne Leerzeichen) angeben.');
+      return;
+    }
     try {
       await api('/api/phone-numbers', {
         method: 'POST',
-        body: JSON.stringify({ provider: newProvider, e164: newNumber, active: true }),
+        body: JSON.stringify({ provider: newProvider, e164, active: true }),
       });
       setNewNumber('');
       await reloadNumbers();
@@ -122,13 +129,15 @@ export default function SettingsPage() {
     flash('Gespeichert.');
   }
 
-  if (error) return <p className="error">{error}</p>;
-  if (!tenant) return <p className="muted">Lädt…</p>;
+  // Only block the whole page when the initial load failed; action errors
+  // (e.g. adding a number) are shown inline so the page stays usable.
+  if (!tenant) return error ? <p className="error">{error}</p> : <p className="muted">Lädt…</p>;
 
   return (
     <>
       <h1>Einstellungen</h1>
       {msg && <p className="success">{msg}</p>}
+      {error && <p className="error">{error}</p>}
       {tenant.paused && (
         <p className="error">Achtung: Dieser Mandant ist wegen Budgetüberschreitung pausiert.</p>
       )}
