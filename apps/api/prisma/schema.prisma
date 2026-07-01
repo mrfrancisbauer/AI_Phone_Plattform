@@ -101,6 +101,10 @@ model Tenant {
   // White-label / branding
   brandName          String?
   brandColor         String?
+  // Realtime (ConversationRelay) conversations — per-tenant beta flag. The
+  // global REALTIME_ENABLED env var must also be on; default is the classic
+  // turn-based flow.
+  realtimeEnabled    Boolean  @default(false)
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 

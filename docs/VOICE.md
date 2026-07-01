@@ -38,7 +38,30 @@ A neural `voice` token carries its own locale, so `<Say>` must not also set
 > Before this, the persona was stored but never reached the audio path — every
 > call used Twilio's robotic default regardless of the selection. That is fixed.
 
-## Roadmap — low-latency realtime (Phase 2)
+## Realtime mode (Phase 2, beta — implemented)
+
+With `REALTIME_ENABLED=true`, the tenant flag ("Realtime-Gespräche (Beta)" in
+the admin console) and an `OPENAI_API_KEY`, inbound calls skip the turn-based
+loop: the voice webhook answers with `<Connect><ConversationRelay>` — Twilio
+does streaming STT/TTS + barge-in and exchanges TEXT with our WebSocket
+(`/realtime/:token`, signed single-call token). The dialogue is led by an LLM
+agent (`apps/api/src/realtime/`):
+
+- consent gate enforced OUTSIDE the LLM (state machine, same regexes as the
+  turn-based flow); "Nein" declines exactly like today
+- tools-only writes: `save_answer` (validated per question type) and `end_call`;
+  the agent persists the same CallMessage/CallAnswer rows, so `finalizeCall`
+  (summary, lead, emails, calendar, costs) is unchanged
+- real token usage is recorded on the call for accurate cost tracking
+- barge-in aborts in-flight generation; `REALTIME_MAX_MINUTES` wraps up politely
+- any relay/LLM failure ends the relay; Twilio then hits the `<Connect>` action
+  URL and the call CONTINUES in the classic turn-based flow (no dead air)
+
+M0 verification (first real call): confirm latency, barge-in feel, and that the
+ConversationRelay attribute set (voice/ttsProvider names) matches the Twilio
+account's enabled voices.
+
+## Roadmap — low-latency realtime (Phase 2 plan)
 
 The turn-based flow is solid and cheap but has IVR-like pauses and no barge-in,
 and the wording is scripted (no live LLM). The state-of-the-art, budget-aware

@@ -79,3 +79,35 @@ export function twimlHangup(say: string, opts: SayOpts = {}): string {
   <Hangup/>
 </Response>`;
 }
+
+export interface ConversationRelayOpts {
+  /** wss URL of our realtime endpoint (carries the signed call token). */
+  wsUrl: string;
+  /** Spoken immediately by Twilio while the WS connects (greeting + consent). */
+  welcomeGreeting: string;
+  /** STT language, e.g. "de-DE". */
+  language: string;
+  /** Optional neural TTS voice (provider-native name) + its provider. */
+  ttsProvider?: string;
+  voice?: string;
+  /** Requested when the relay session ends/fails → our fallback handler. */
+  actionUrl: string;
+}
+
+/**
+ * <Connect><ConversationRelay> — hands the call to Twilio's realtime bridge:
+ * Twilio does streaming STT/TTS + barge-in and exchanges TEXT with our
+ * WebSocket. When the session ends (or errors), Twilio requests `actionUrl`,
+ * where we either hang up or fall back to the classic turn-based flow.
+ */
+export function twimlConversationRelay(o: ConversationRelayOpts): string {
+  const voiceAttrs = o.voice && o.ttsProvider
+    ? ` ttsProvider="${escapeXml(o.ttsProvider)}" voice="${escapeXml(o.voice)}"`
+    : '';
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Connect action="${escapeXml(o.actionUrl)}">
+    <ConversationRelay url="${escapeXml(o.wsUrl)}" welcomeGreeting="${escapeXml(o.welcomeGreeting)}" language="${escapeXml(o.language)}" transcriptionLanguage="${escapeXml(o.language)}"${voiceAttrs} interruptible="speech" />
+  </Connect>
+</Response>`;
+}
