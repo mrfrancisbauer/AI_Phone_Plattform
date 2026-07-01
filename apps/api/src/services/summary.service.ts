@@ -215,7 +215,7 @@ export async function finalizeCall(callId: string): Promise<void> {
     summary,
   });
   if (appointment) {
-    await createAppointment(call.tenantId, appointment, call.id).catch((err) =>
+    await createAppointment(call.tenantId, appointment, call.id, call.tenant.timezone).catch((err) =>
       logger.error({ err, callId: call.id }, 'createAppointment threw'),
     );
   }

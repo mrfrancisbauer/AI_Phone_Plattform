@@ -7,6 +7,7 @@ import type { FastifyInstance } from 'fastify';
 import {
   CALENDAR_PROVIDERS,
   CALENDAR_PROVIDER_LABELS,
+  setDefaultCalendarSchema,
   type CalendarProvider,
 } from '@ai-phone/shared';
 import { z } from 'zod';
@@ -14,9 +15,13 @@ import { config } from '../config.js';
 import { badRequest } from '../lib/errors.js';
 import { logger } from '../logger.js';
 import {
+  appointmentStats,
   calendarStatus,
   completeOAuth,
   disconnectCalendar,
+  getCalendars,
+  setDefaultCalendar,
+  testConnection,
 } from '../services/calendar.service.js';
 import { getCalendar, configuredCalendarProviders } from '../services/calendar/index.js';
 import { signCalendarState } from '../services/calendar/state.js';
@@ -55,6 +60,32 @@ export async function integrationRoutes(app: FastifyInstance) {
       provider,
     });
     return { url: port.authorizeUrl(state) };
+  });
+
+  // List the connected account's calendars (to pick a default).
+  app.get('/integrations/calendar/:provider/calendars', async (req) => {
+    const { provider } = providerParam.parse(req.params);
+    const calendars = await getCalendars(req.auth!.tenantId, provider);
+    return { calendars };
+  });
+
+  // Save the default calendar for bookings.
+  app.patch('/integrations/calendar/:provider', { preHandler: [app.requireCapability('tenant:write')] }, async (req) => {
+    const { provider } = providerParam.parse(req.params);
+    const { calendarId } = setDefaultCalendarSchema.parse(req.body);
+    await setDefaultCalendar(req.auth!.tenantId, provider, calendarId, req.auth!.userId);
+    return { ok: true, calendarId };
+  });
+
+  // Verify the connection works.
+  app.post('/integrations/calendar/:provider/test', { preHandler: [app.requireCapability('tenant:write')] }, async (req) => {
+    const { provider } = providerParam.parse(req.params);
+    return testConnection(req.auth!.tenantId, provider);
+  });
+
+  // Today's booking counts for the dashboard widget.
+  app.get('/integrations/calendar/stats', async (req) => {
+    return appointmentStats(req.auth!.tenantId);
   });
 
   app.delete('/integrations/calendar/:provider', { preHandler: [app.requireCapability('tenant:write')] }, async (req, reply) => {

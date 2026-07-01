@@ -25,6 +25,7 @@ export default function DashboardPage() {
   const [calls, setCalls] = useState<CallItem[]>([]);
   const [assistant, setAssistant] = useState<Assistant | null>(null);
   const [numbers, setNumbers] = useState<PhoneNumber[]>([]);
+  const [appts, setAppts] = useState<{ bookedToday: number; failedToday: number } | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -47,6 +48,13 @@ export default function DashboardPage() {
       })
       .finally(() => setLoading(false));
   }, [router]);
+
+  // Calendar booking stats are optional — isolated so they never block the page.
+  useEffect(() => {
+    api<{ bookedToday: number; failedToday: number }>('/api/integrations/calendar/stats')
+      .then(setAppts)
+      .catch(() => {});
+  }, []);
 
   if (loading) return <Spinner />;
 
@@ -91,6 +99,19 @@ export default function DashboardPage() {
           bg="#f3effe"
         />
       </div>
+
+      {/* Calendar bookings today */}
+      {appts && (appts.bookedToday > 0 || appts.failedToday > 0) && (
+        <div className="setting-card" style={{ marginTop: '1.25rem' }}>
+          <header><div className="row between"><h3>Termine heute</h3><Link href="/company/integrations" className="btn secondary sm">Kalender</Link></div></header>
+          <div className="body">
+            <div className="row" style={{ gap: 24 }}>
+              <div><div style={{ fontSize: '1.6rem', fontWeight: 700, color: '#0a7d2c' }}>{appts.bookedToday}</div><div className="muted" style={{ fontSize: '0.85rem' }}>gebuchte Termine</div></div>
+              <div><div style={{ fontSize: '1.6rem', fontWeight: 700, color: appts.failedToday > 0 ? '#ef4444' : 'inherit' }}>{appts.failedToday}</div><div className="muted" style={{ fontSize: '0.85rem' }}>fehlgeschlagen / belegt</div></div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Setup progress */}
       {doneCount < steps.length && (
