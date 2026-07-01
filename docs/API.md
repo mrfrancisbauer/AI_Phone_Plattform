@@ -71,11 +71,22 @@ and `condition = { questionKey, operator: equals|not_equals|gte|lte|truthy, valu
 
 ## Phone numbers
 
+Telephony is provider-agnostic (Twilio today, Telnyx later) via a small port.
+Customers keep their own number by **forwarding** it to a platform-owned routing
+DID — the CPaaS stays the licensed carrier, the platform stays a software layer.
+`e164` is the routing DID (the forward target / dialed number); `displayNumber`
+is the customer's own business number, stored as encrypted display metadata.
+`forwardingStatus` starts at `pending` and flips to `active` on the first
+inbound call. Numbers without a `displayNumber` are dialed directly.
+
 | Method | Path | Capability |
 |--------|------|-----------|
-| GET | `/api/phone-numbers` | tenant:read |
-| GET | `/api/phone-numbers/webhook-info` | tenant:read — webhook URL + whether Twilio creds are set |
-| POST | `/api/phone-numbers` | tenant:write — `{ provider, e164, assistantId?, active }` |
+| GET | `/api/phone-numbers` | tenant:read — incl. `displayNumber`, `forwardingStatus` |
+| GET | `/api/phone-numbers/telephony-info` | tenant:read — webhook URL + `canProvision` + active provisioning provider |
+| GET | `/api/phone-numbers/webhook-info` | tenant:read — legacy: webhook URL + whether Twilio creds are set |
+| GET | `/api/phone-numbers/available?country=DE&areaCode=&contains=` | tenant:read — purchasable DIDs from the active provider (empty if none) |
+| POST | `/api/phone-numbers` | tenant:write — `{ provider, e164, displayNumber?, mode?, assistantId?, active }` |
+| POST | `/api/phone-numbers/purchase` | tenant:write — `{ e164, assistantId? }` buys a DID from the active provider |
 | POST | `/api/phone-numbers/:id/configure-webhook` | tenant:write — points the Twilio number's voice webhook at the platform |
 | DELETE | `/api/phone-numbers/:id` | tenant:write |
 

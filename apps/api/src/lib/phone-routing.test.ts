@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import {
   classifyInbound,
   inboundLogLevel,
+  initialForwardingStatus,
   resolveAssistantForNumber,
   type InboundPhone,
 } from './phone-routing.js';
@@ -55,6 +56,15 @@ test('classifyInbound: no assistant → no_assistant', () => {
 });
 test('classifyInbound: paused tenant → paused', () => {
   assert.deepEqual(classifyInbound({ ...base, tenant: { paused: true } }), { reachable: false, reason: 'paused' });
+});
+
+test('initialForwardingStatus: a forwarded (display) number waits for verification', () => {
+  assert.equal(initialForwardingStatus('+493012345678'), 'pending');
+});
+test('initialForwardingStatus: a directly-dialed number is active immediately', () => {
+  assert.equal(initialForwardingStatus(null), 'active');
+  assert.equal(initialForwardingStatus(undefined), 'active');
+  assert.equal(initialForwardingStatus(''), 'active');
 });
 
 test('inboundLogLevel: ok is info, everything else is warn', () => {

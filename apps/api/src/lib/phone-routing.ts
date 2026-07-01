@@ -44,6 +44,18 @@ export function resolveAssistantForNumber(
   return { ok: false, message: 'Bitte einen Assistenten für diese Telefonnummer auswählen.' };
 }
 
+/**
+ * Initial forwarding status for a new number.
+ * - A "keep your number" DID has a display number the customer forwards from:
+ *   it stays 'pending' until the first forwarded call is actually received.
+ * - A directly-dialed number (no display number) is reachable immediately.
+ */
+export function initialForwardingStatus(
+  displayNumber?: string | null,
+): 'pending' | 'active' {
+  return displayNumber ? 'pending' : 'active';
+}
+
 export type InboundReason = 'ok' | 'not_found' | 'inactive' | 'no_assistant' | 'paused';
 
 export interface InboundPhone {

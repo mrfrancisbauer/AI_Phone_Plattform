@@ -79,9 +79,27 @@ export const upsertAssistantSchema = z.object({
 // --- Phone numbers ---
 export const createPhoneNumberSchema = z.object({
   provider: z.enum(TELEPHONY_PROVIDERS),
+  // The routing DID (platform-owned forward target / dialed number).
   e164: e164Schema,
+  // The customer's own business number they keep and forward from (optional).
+  displayNumber: e164Schema.optional(),
+  // How the number is connected — informational, drives UI copy only.
+  mode: z.enum(['forward', 'purchase', 'sip']).optional(),
   assistantId: z.string().uuid().nullable().optional(),
   active: z.boolean().default(true),
+});
+
+// Search the active provider's inventory for purchasable DIDs.
+export const searchNumbersSchema = z.object({
+  country: z.string().length(2).default('DE'),
+  areaCode: z.string().max(6).optional(),
+  contains: z.string().max(20).optional(),
+});
+
+// Buy a DID from the active provider and bind it to an assistant.
+export const purchaseNumberSchema = z.object({
+  e164: e164Schema,
+  assistantId: z.string().uuid().nullable().optional(),
 });
 
 // --- Questionnaire ---
