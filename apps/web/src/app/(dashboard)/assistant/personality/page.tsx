@@ -96,7 +96,7 @@ export default function PersonalityPage() {
         </div>
         <div className="row" style={{ marginTop: 10 }}>
           <button className="btn secondary sm" onClick={preview} type="button">▶ Hörprobe ({persona.name})</button>
-          <span className="muted" style={{ fontSize: '0.8rem' }}>Vorschau über die Systemstimme Ihres Browsers.</span>
+          <span className="muted" style={{ fontSize: '0.8rem' }}>Nur grobe Browser-Vorschau — am Telefon klingt der Assistent mit einer hochwertigen neuralen Stimme deutlich natürlicher.</span>
         </div>
       </SettingCard>
 
