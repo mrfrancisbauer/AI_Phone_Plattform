@@ -13,6 +13,7 @@ import { prisma } from '../db.js';
 import { blindHash, encrypt } from '../lib/crypto.js';
 import { classifyInbound, inboundLogLevel } from '../lib/phone-routing.js';
 import { validateTwilioSignature, twimlGather, twimlHangup } from '../lib/twilio.js';
+import { defaultTwilioVoice, resolveTwilioVoice } from '../lib/voice.js';
 import { logger } from '../logger.js';
 import { handleTurn } from '../services/conversation.service.js';
 import { audit } from '../lib/audit.js';
@@ -68,7 +69,7 @@ export async function webhookRoutes(app: FastifyInstance) {
         decision.reason === 'paused'
           ? 'Dieser Dienst ist vorübergehend pausiert. Bitte versuchen Sie es später erneut.'
           : 'Diese Nummer ist derzeit nicht erreichbar. Auf Wiederhören.';
-      return twiml(reply, twimlHangup(say));
+      return twiml(reply, twimlHangup(say, { voice: defaultTwilioVoice() }));
     }
 
     // classifyInbound guarantees phone + active assistant here.
@@ -107,7 +108,10 @@ export async function webhookRoutes(app: FastifyInstance) {
 
     const greeting = `${assistant.greetingText} ${assistant.consentText}`;
     const action = `${config.API_PUBLIC_URL}/webhooks/twilio/gather?callId=${call.id}`;
-    return twiml(reply, twimlGather(greeting, action, { language: localeToTwilio(assistant.locale) }));
+    return twiml(reply, twimlGather(greeting, action, {
+      language: localeToTwilio(assistant.locale),
+      voice: resolveTwilioVoice(assistant.voice, assistant.locale),
+    }));
   });
 
   // --- Caller turn ---
@@ -125,20 +129,22 @@ export async function webhookRoutes(app: FastifyInstance) {
       result = await handleTurn(callId, speech);
     } catch (err) {
       logger.error({ err, callId }, 'handleTurn failed');
-      return twiml(reply, twimlHangup('Es ist ein technischer Fehler aufgetreten. Bitte versuchen Sie es später erneut.'));
+      return twiml(reply, twimlHangup('Es ist ein technischer Fehler aufgetreten. Bitte versuchen Sie es später erneut.', { voice: defaultTwilioVoice() }));
     }
 
     const call = await prisma.call.findUnique({
       where: { id: callId },
-      select: { assistant: { select: { locale: true } } },
+      select: { assistant: { select: { locale: true, voice: true } } },
     });
-    const language = localeToTwilio(call?.assistant.locale ?? 'de');
+    const locale = call?.assistant.locale ?? 'de';
+    const language = localeToTwilio(locale);
+    const voice = resolveTwilioVoice(call?.assistant.voice, locale);
     const action = `${config.API_PUBLIC_URL}/webhooks/twilio/gather?callId=${callId}`;
 
     if (result.action === 'hangup') {
-      return twiml(reply, twimlHangup(result.say, { language }));
+      return twiml(reply, twimlHangup(result.say, { language, voice }));
     }
-    return twiml(reply, twimlGather(result.say, action, { language }));
+    return twiml(reply, twimlGather(result.say, action, { language, voice }));
   });
 }
 

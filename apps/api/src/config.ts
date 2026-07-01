@@ -31,6 +31,10 @@ const envSchema = z.object({
     .enum(['true', 'false'])
     .default('true')
     .transform((v) => v === 'true'),
+  // Which neural TTS voices the assistant speaks with. google = Google Neural2
+  // (default, 5 distinct DE/EN voices); polly = Amazon Polly Neural (fallback,
+  // universally enabled on Twilio); basic = Twilio's legacy voice.
+  TTS_VOICE_PROVIDER: z.enum(['google', 'polly', 'basic']).default('google'),
 
   OPENAI_API_KEY: z.string().optional(),
   LLM_MODEL: z.string().default('gpt-4o-mini'),

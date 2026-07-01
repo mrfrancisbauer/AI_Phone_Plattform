@@ -43,16 +43,29 @@ function escapeXml(s: string): string {
 
 interface SayOpts {
   language?: string;
+  /** A concrete neural voice token (e.g. "Google.de-DE-Neural2-C"). When set it
+   *  carries its own locale, so <Say> uses `voice` instead of `language`. */
   voice?: string;
+}
+
+/**
+ * Build a <Say>. A neural `voice` token already implies its locale, so we must
+ * not also set `language` on the same tag (Twilio rejects the mismatch). Without
+ * a voice we fall back to the legacy language-based voice.
+ */
+function sayTag(say: string, opts: SayOpts): string {
+  if (opts.voice) return `<Say voice="${escapeXml(opts.voice)}">${escapeXml(say)}</Say>`;
+  return `<Say language="${opts.language ?? 'de-DE'}">${escapeXml(say)}</Say>`;
 }
 
 /** <Gather input="speech"> with a nested <Say>, used to ask + listen. */
 export function twimlGather(say: string, actionUrl: string, opts: SayOpts = {}): string {
+  // Gather keeps `language` for speech RECOGNITION regardless of the TTS voice.
   const language = opts.language ?? 'de-DE';
   return `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Gather input="speech" language="${language}" speechTimeout="auto" action="${escapeXml(actionUrl)}" method="POST">
-    <Say language="${language}">${escapeXml(say)}</Say>
+    ${sayTag(say, opts)}
   </Gather>
   <Redirect method="POST">${escapeXml(actionUrl)}</Redirect>
 </Response>`;
@@ -60,10 +73,9 @@ export function twimlGather(say: string, actionUrl: string, opts: SayOpts = {}):
 
 /** <Say> then <Hangup>, used to end the call gracefully. */
 export function twimlHangup(say: string, opts: SayOpts = {}): string {
-  const language = opts.language ?? 'de-DE';
   return `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Say language="${language}">${escapeXml(say)}</Say>
+  ${sayTag(say, opts)}
   <Hangup/>
 </Response>`;
 }
