@@ -271,10 +271,37 @@ model Call {
   answers     CallAnswer[]
   summary     CallSummary?
   usageEvent  UsageEvent?
+  appointment CallAppointment?
 
   @@index([tenantId])
   @@index([tenantId, startedAt])
   @@map("calls")
+}
+
+// Outcome of the calendar-booking attempt for a call. One per call.
+//   detected     — a date/time was recognized but no calendar is connected
+//   booked       — event created on the tenant's calendar
+//   conflict     — desired slot was busy; not booked (alternatives were offered)
+//   failed       — a provider error prevented booking
+model CallAppointment {
+  id         String    @id @default(uuid())
+  tenantId   String
+  callId     String    @unique
+  provider   String?
+  calendarId String?
+  status     String
+  startAt    DateTime?
+  eventId    String?
+  htmlLink   String?
+  error      String?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  call Call @relation(fields: [callId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([tenantId, createdAt])
+  @@map("call_appointments")
 }
 
 model CallMessage {

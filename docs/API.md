@@ -110,10 +110,19 @@ See `docs/INTEGRATIONS.md`. OAuth tokens are stored encrypted, never returned.
 
 | Method | Path | Capability |
 |--------|------|-----------|
-| GET | `/api/integrations/calendar` | tenant:read — providers, configured flag, connection status |
+| GET | `/api/integrations/calendar` | tenant:read — providers, configured flag, connection status + colour |
 | POST | `/api/integrations/calendar/:provider/connect` | tenant:write — returns `{ url }` (provider consent) |
+| GET | `/api/integrations/calendar/:provider/calendars` | tenant:read — the account's calendars |
+| PATCH | `/api/integrations/calendar/:provider` | tenant:write — `{ calendarId }` set default calendar |
+| POST | `/api/integrations/calendar/:provider/test` | tenant:write — verify the connection |
+| GET | `/api/integrations/calendar/stats` | tenant:read — `{ bookedToday, failedToday }` |
 | DELETE | `/api/integrations/calendar/:provider` | tenant:write — disconnect |
 | GET | `/integrations/calendar/callback` | public — OAuth redirect target (signed `state`), **not** under `/api` |
+
+Free/busy is checked before every booking (Google FreeBusy, Microsoft
+CalendarView) — a busy slot is never double-booked; the assistant proposes free
+alternatives live during the call. Bookings always use the tenant's chosen
+default calendar (Primary if none selected).
 
 ## Calls
 

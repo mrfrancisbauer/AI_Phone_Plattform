@@ -23,6 +23,18 @@ export interface CreatedEvent {
   htmlLink?: string | null;
 }
 
+export interface CalendarInfo {
+  id: string;
+  name: string;
+  primary: boolean;
+}
+
+/** A busy time range on the calendar (absolute instants). */
+export interface BusyInterval {
+  start: Date;
+  end: Date;
+}
+
 export interface CalendarPort {
   readonly provider: CalendarProvider;
   /** Whether OAuth client credentials for this provider are configured. */
@@ -33,6 +45,10 @@ export interface CalendarPort {
   exchangeCode(code: string): Promise<OAuthTokens>;
   /** Refresh an access token using a stored refresh token. */
   refresh(refreshToken: string): Promise<OAuthTokens>;
+  /** List the account's calendars (for choosing a default). */
+  listCalendars(accessToken: string): Promise<CalendarInfo[]>;
+  /** Busy intervals on `calendarId` between two ISO instants (free/busy). */
+  getBusy(accessToken: string, calendarId: string, fromISO: string, toISO: string): Promise<BusyInterval[]>;
   /** Create an event on `calendarId` using a valid access token. */
   createEvent(accessToken: string, calendarId: string, draft: AppointmentDraft): Promise<CreatedEvent>;
 }

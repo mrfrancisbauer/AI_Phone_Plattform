@@ -22,12 +22,16 @@ import {
   isComplete,
   nextQuestion,
   normalizeAnswer,
+  parseNaturalDateTime,
   type AnswerMap,
+  type NormalizationResult,
   type QuestionnaireQuestion,
 } from '@ai-phone/shared';
 import { prisma } from '../db.js';
 import { encrypt } from '../lib/crypto.js';
+import { nowInZone, zonedWallToUtc } from '../lib/timezone.js';
 import { logger } from '../logger.js';
+import { checkAvailability } from './calendar.service.js';
 import { finalizeCall } from './summary.service.js';
 
 type Phase = 'consent' | 'questions' | 'confirm' | 'correction' | 'email_consent' | 'done';
@@ -87,8 +91,53 @@ async function loadCall(callId: string) {
     include: {
       assistant: { include: { questionnaire: { include: { questions: true } } } },
       answers: true,
+      tenant: { select: { timezone: true } },
     },
   });
+}
+
+/** Format a proposed slot for speech in the tenant's timezone. */
+function formatSlot(d: Date, tz: string, locale: string): string {
+  return new Intl.DateTimeFormat(locale === 'en' ? 'en-GB' : 'de-DE', {
+    timeZone: tz, weekday: 'long', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
+  }).format(d);
+}
+
+/**
+ * Resolve a datetime answer: parse the natural-language date/time in the
+ * tenant's timezone, then check calendar availability. Returns a clarification
+ * (so the assistant asks again) when the date is unclear or the slot is busy —
+ * in the busy case it proposes free alternatives. On success the value stored
+ * is a normalized UTC ISO string. All provider logic stays behind the service.
+ */
+async function resolveDatetimeAnswer(
+  tenantId: string,
+  tz: string,
+  locale: string,
+  rawText: string,
+): Promise<NormalizationResult> {
+  const now = nowInZone(tz);
+  const parsed = parseNaturalDateTime(rawText, now, locale === 'en' ? 'en' : 'de');
+  if (!parsed) {
+    return {
+      ok: false,
+      value: null,
+      clarification: 'Ich habe das Datum nicht ganz verstanden. Für wann möchten Sie den Termin — zum Beispiel „morgen um 14 Uhr" oder „nächsten Dienstag um 10"?',
+    };
+  }
+  const startUtc = zonedWallToUtc(parsed, tz);
+  const avail = await checkAvailability(tenantId, startUtc, tz);
+  if (!avail.available) {
+    const opts = avail.alternatives.map((d) => formatSlot(d, tz, locale)).join(' oder ');
+    return {
+      ok: false,
+      value: null,
+      clarification: opts
+        ? `Dieser Termin ist leider schon belegt. Ich könnte Ihnen anbieten: ${opts}. Welcher passt Ihnen?`
+        : 'Dieser Termin ist leider schon belegt. Können Sie mir einen anderen Wunschtermin nennen?',
+    };
+  }
+  return { ok: true, value: startUtc.toISOString() };
 }
 
 async function logMessage(callId: string, tenantId: string, role: string, text: string) {
@@ -152,7 +201,13 @@ export async function handleTurn(callId: string, callerText: string | null): Pro
       const answers = buildAnswerMap(call.answers);
       const current = questions.find((q) => q.key === state.pendingQuestionKey);
       if (current && callerText) {
-        const result = normalizeAnswer(current, callerText);
+        // Datetime answers go through NL parsing + calendar availability so the
+        // assistant can confirm or propose alternatives live; everything else
+        // uses the pure normalizer.
+        const result =
+          current.type === QUESTION_TYPES.DATETIME
+            ? await resolveDatetimeAnswer(call.tenantId, call.tenant.timezone, assistant.locale, callerText)
+            : normalizeAnswer(current, callerText);
         if (!result.ok) {
           const clarifyCount = state.clarifyCount + 1;
           if (clarifyCount >= 3) {

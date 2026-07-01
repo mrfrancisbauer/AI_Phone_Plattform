@@ -109,6 +109,11 @@ export const keepNumberSchema = z.object({
   assistantId: z.string().uuid().nullable().optional(),
 });
 
+// Choose the default calendar for a connected provider.
+export const setDefaultCalendarSchema = z.object({
+  calendarId: z.string().min(1).max(512),
+});
+
 // Add a DID to the platform routing-number pool (super admin).
 export const addRoutingNumberSchema = z.object({
   e164: e164Schema,

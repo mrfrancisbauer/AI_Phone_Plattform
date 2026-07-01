@@ -56,6 +56,7 @@ export async function callRoutes(app: FastifyInstance) {
         answers: { orderBy: { createdAt: 'asc' } },
         messages: { orderBy: { createdAt: 'asc' } },
         usageEvent: true,
+        appointment: true,
       },
     });
     if (!call) throw notFound('Call not found');
@@ -90,6 +91,15 @@ export async function callRoutes(app: FastifyInstance) {
             summary: call.summary.summary,
             leadCategory: call.summary.leadCategory,
             recommendedAction: call.summary.recommendedAction,
+          }
+        : null,
+      appointment: call.appointment
+        ? {
+            status: call.appointment.status,
+            provider: call.appointment.provider,
+            startAt: call.appointment.startAt,
+            htmlLink: call.appointment.htmlLink,
+            error: call.appointment.error,
           }
         : null,
       answers: call.answers.map((a) => ({ questionKey: a.questionKey, type: a.type, value: a.value })),

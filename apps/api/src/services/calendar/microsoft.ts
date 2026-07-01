@@ -7,6 +7,8 @@ import type { AppointmentDraft } from '../../lib/calendar-appointment.js';
 import {
   calendarRedirectUri,
   emailFromIdToken,
+  type BusyInterval,
+  type CalendarInfo,
   type CalendarPort,
   type CreatedEvent,
   type OAuthTokens,
@@ -94,6 +96,35 @@ export class MicrosoftCalendarAdapter implements CalendarPort {
     const tokens = toTokens((await res.json()) as MsTokenResponse);
     tokens.refreshToken = tokens.refreshToken ?? refreshToken;
     return tokens;
+  }
+
+  async listCalendars(accessToken: string): Promise<CalendarInfo[]> {
+    const res = await fetch(`${GRAPH}/me/calendars?$select=id,name,isDefaultCalendar`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!res.ok) throw new Error(`Microsoft calendar list failed (${res.status}).`);
+    const data = (await res.json()) as { value?: Array<{ id: string; name?: string; isDefaultCalendar?: boolean }> };
+    return (data.value ?? []).map((c) => ({ id: c.id, name: c.name ?? c.id, primary: Boolean(c.isDefaultCalendar) }));
+  }
+
+  async getBusy(accessToken: string, calendarId: string, fromISO: string, toISO: string): Promise<BusyInterval[]> {
+    const base = !calendarId || calendarId === 'primary'
+      ? `${GRAPH}/me/calendarView`
+      : `${GRAPH}/me/calendars/${encodeURIComponent(calendarId)}/calendarView`;
+    const url = `${base}?startDateTime=${encodeURIComponent(fromISO)}&endDateTime=${encodeURIComponent(toISO)}&$select=start,end,showAs&$top=200`;
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${accessToken}`, Prefer: 'outlook.timezone="UTC"' },
+    });
+    if (!res.ok) throw new Error(`Microsoft free/busy failed (${res.status}).`);
+    const data = (await res.json()) as {
+      value?: Array<{ start: { dateTime: string }; end: { dateTime: string }; showAs?: string }>;
+    };
+    // Graph returns naive UTC datetimes (Prefer header) — treat as UTC. Events
+    // marked "free" don't block the slot.
+    const asUtc = (s: string) => new Date(/[zZ]|[+-]\d{2}:?\d{2}$/.test(s) ? s : `${s}Z`);
+    return (data.value ?? [])
+      .filter((e) => e.showAs !== 'free')
+      .map((e) => ({ start: asUtc(e.start.dateTime), end: asUtc(e.end.dateTime) }));
   }
 
   async createEvent(accessToken: string, calendarId: string, draft: AppointmentDraft): Promise<CreatedEvent> {

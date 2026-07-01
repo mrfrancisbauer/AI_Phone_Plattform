@@ -24,6 +24,13 @@ interface CallDetail {
     leadCategory: string;
     recommendedAction: string;
   } | null;
+  appointment: {
+    status: string;
+    provider: string | null;
+    startAt: string | null;
+    htmlLink: string | null;
+    error: string | null;
+  } | null;
   answers: { questionKey: string; type: string; value: unknown }[];
   transcript: { role: string; text: string; at: string }[];
   usage: {
@@ -109,6 +116,21 @@ export default function CallDetailPage({ params }: { params: { id: string } }) {
         </div>
       )}
 
+      {data.appointment && (
+        <div className="panel" style={{ marginTop: '1rem' }}>
+          <h3>Termin</h3>
+          <table>
+            <tbody>
+              <tr><td className="muted">Status</td><td>{appointmentLabel(data.appointment.status)}</td></tr>
+              {data.appointment.startAt && <tr><td className="muted">Termin erkannt</td><td>{dateTime(data.appointment.startAt)}</td></tr>}
+              {data.appointment.provider && <tr><td className="muted">Kalender</td><td>{data.appointment.provider === 'google' ? 'Google Kalender' : 'Microsoft Outlook'}</td></tr>}
+              {data.appointment.htmlLink && <tr><td className="muted">Eintrag</td><td><a href={data.appointment.htmlLink} target="_blank" rel="noreferrer">Im Kalender öffnen</a></td></tr>}
+              {data.appointment.error && <tr><td className="muted">Fehler</td><td className="error" style={{ margin: 0 }}>{data.appointment.error}</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      )}
+
       <h2>Strukturierte Antworten</h2>
       <div className="panel" style={{ padding: 0 }}>
         <table>
@@ -137,4 +159,14 @@ export default function CallDetailPage({ params }: { params: { id: string } }) {
       </div>
     </>
   );
+}
+
+function appointmentLabel(status: string): string {
+  return {
+    booked: '✓ Termin gebucht',
+    detected: 'Termin erkannt (kein Kalender verbunden)',
+    conflict: 'Slot belegt — nicht gebucht',
+    failed: 'Buchung fehlgeschlagen',
+    no_calendar: 'Termin erkannt (kein Kalender verbunden)',
+  }[status] ?? status;
 }

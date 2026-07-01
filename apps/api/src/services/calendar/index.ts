@@ -7,7 +7,7 @@ import { GoogleCalendarAdapter } from './google.js';
 import { MicrosoftCalendarAdapter } from './microsoft.js';
 import type { CalendarPort } from './types.js';
 
-export type { CalendarPort, OAuthTokens, CreatedEvent } from './types.js';
+export type { CalendarPort, OAuthTokens, CreatedEvent, CalendarInfo, BusyInterval } from './types.js';
 
 export function getCalendar(provider: CalendarProvider): CalendarPort {
   switch (provider) {

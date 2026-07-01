@@ -7,6 +7,8 @@ import type { AppointmentDraft } from '../../lib/calendar-appointment.js';
 import {
   calendarRedirectUri,
   emailFromIdToken,
+  type BusyInterval,
+  type CalendarInfo,
   type CalendarPort,
   type CreatedEvent,
   type OAuthTokens,
@@ -88,6 +90,27 @@ export class GoogleCalendarAdapter implements CalendarPort {
     // Google usually omits a new refresh token on refresh — keep the old one.
     tokens.refreshToken = tokens.refreshToken ?? refreshToken;
     return tokens;
+  }
+
+  async listCalendars(accessToken: string): Promise<CalendarInfo[]> {
+    const res = await fetch(`${API}/users/me/calendarList`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!res.ok) throw new Error(`Google calendar list failed (${res.status}).`);
+    const data = (await res.json()) as { items?: Array<{ id: string; summary?: string; primary?: boolean }> };
+    return (data.items ?? []).map((c) => ({ id: c.id, name: c.summary ?? c.id, primary: Boolean(c.primary) }));
+  }
+
+  async getBusy(accessToken: string, calendarId: string, fromISO: string, toISO: string): Promise<BusyInterval[]> {
+    const res = await fetch(`${API}/freeBusy`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ timeMin: fromISO, timeMax: toISO, items: [{ id: calendarId || 'primary' }] }),
+    });
+    if (!res.ok) throw new Error(`Google free/busy failed (${res.status}).`);
+    const data = (await res.json()) as { calendars?: Record<string, { busy?: Array<{ start: string; end: string }> }> };
+    const cal = data.calendars?.[calendarId || 'primary'];
+    return (cal?.busy ?? []).map((b) => ({ start: new Date(b.start), end: new Date(b.end) }));
   }
 
   async createEvent(accessToken: string, calendarId: string, draft: AppointmentDraft): Promise<CreatedEvent> {
