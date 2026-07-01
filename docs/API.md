@@ -169,6 +169,12 @@ default calendar (Primary if none selected).
 |--------|------|-------|
 | POST | `/webhooks/twilio/voice` | Inbound call → TwiML greeting + consent |
 | POST | `/webhooks/twilio/gather?callId=` | Each caller turn → TwiML next prompt / hangup |
+| POST | `/webhooks/twilio/status` | Call ended (incl. caller hang-ups) → finalize/close the call, record duration + costs |
+
+The status callback is configured automatically alongside the voice URL. For
+manually managed numbers, set the number's **status callback** to
+`…/webhooks/twilio/status` (POST) in the Twilio console — without it, calls
+abandoned by the caller would stay open with no duration, cost or summary.
 
 ## Health
 

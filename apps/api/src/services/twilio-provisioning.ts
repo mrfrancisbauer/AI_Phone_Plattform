@@ -24,6 +24,12 @@ export function voiceWebhookUrl(): string {
   return `${config.API_PUBLIC_URL}/webhooks/twilio/voice`;
 }
 
+/** The status callback URL — fires when a call ends (incl. caller hang-ups),
+ *  so abandoned calls still get finalized with duration + costs. */
+export function statusWebhookUrl(): string {
+  return `${config.API_PUBLIC_URL}/webhooks/twilio/status`;
+}
+
 interface IncomingNumber {
   sid: string;
   phone_number: string;
@@ -54,7 +60,12 @@ export async function configureNumberWebhook(e164: string): Promise<{ voiceUrl: 
   }
 
   const voiceUrl = voiceWebhookUrl();
-  const body = new URLSearchParams({ VoiceUrl: voiceUrl, VoiceMethod: 'POST' });
+  const body = new URLSearchParams({
+    VoiceUrl: voiceUrl,
+    VoiceMethod: 'POST',
+    StatusCallback: statusWebhookUrl(),
+    StatusCallbackMethod: 'POST',
+  });
   const res = await fetch(
     `${TWILIO_API}/Accounts/${config.TWILIO_ACCOUNT_SID}/IncomingPhoneNumbers/${number.sid}.json`,
     {

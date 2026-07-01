@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
-import { money, duration, dateTime } from '@/lib/format';
+import { money, duration, dateTime, callStatusLabel } from '@/lib/format';
 import { HeroHead } from '@/components/app';
 import { Spinner } from '@/components/ui';
 import { personaByVoiceId } from '@ai-phone/shared';
@@ -188,7 +188,7 @@ export default function DashboardPage() {
             {calls.map((c) => (
               <Link key={c.id} href={`/calls/${c.id}`} className="row between" style={{ padding: '0.5rem 0', borderBottom: '1px solid var(--border)', color: 'inherit', textDecoration: 'none' }}>
                 <span>{c.callerName ?? c.fromNumber}</span>
-                <span className="muted" style={{ fontSize: '0.82rem' }}>{c.status === 'completed' ? duration(c.durationSeconds) : c.status}</span>
+                <span className="muted" style={{ fontSize: '0.82rem' }}>{c.status === 'completed' ? duration(c.durationSeconds) : callStatusLabel(c.status)}</span>
               </Link>
             ))}
           </div>

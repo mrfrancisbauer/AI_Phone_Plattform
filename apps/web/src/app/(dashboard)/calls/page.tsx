@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useApi } from '@/lib/useApi';
 import { api, API_URL, getToken } from '@/lib/api';
-import { money, duration, dateTime, leadColor } from '@/lib/format';
+import { money, duration, dateTime, leadColor, callStatusLabel } from '@/lib/format';
 
 interface CallListItem {
   id: string;
@@ -51,6 +51,7 @@ export default function CallsPage() {
               <tr>
                 <th>Zeitpunkt</th>
                 <th>Anrufer</th>
+                <th>Status</th>
                 <th>Anliegen</th>
                 <th>Lead</th>
                 <th>Dauer</th>
@@ -61,7 +62,7 @@ export default function CallsPage() {
             <tbody>
               {data.items.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="muted">
+                  <td colSpan={8} className="muted">
                     Noch keine Gespräche vorhanden.
                   </td>
                 </tr>
@@ -70,6 +71,7 @@ export default function CallsPage() {
                 <tr key={c.id}>
                   <td>{dateTime(c.startedAt)}</td>
                   <td>{c.callerName ?? c.fromNumber}</td>
+                  <td><span className="muted">{callStatusLabel(c.status)}</span></td>
                   <td>{c.concern ?? <span className="muted">–</span>}</td>
                   <td>
                     {c.leadCategory ? (

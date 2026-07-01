@@ -100,7 +100,10 @@ prompt) and **Fragebogen**, and invite colleagues under **Nutzer**.
      **„Webhook einrichten"**. This calls Twilio and points the number's
      *A call comes in* voice URL at `…/webhooks/twilio/voice` automatically.
    - **Manual:** copy the webhook URL shown on that page into the Twilio console
-     under the number's *Voice → A call comes in* (HTTP POST).
+     under the number's *Voice → A call comes in* (HTTP POST), and set the
+     number's *Call status changes* callback to `…/webhooks/twilio/status`
+     (HTTP POST) — this is what finalizes calls when the caller hangs up, so
+     duration, costs and summaries are recorded for abandoned calls too.
 4. Keep `TWILIO_VALIDATE_SIGNATURE=true` so only genuine Twilio requests are
    accepted.
 
